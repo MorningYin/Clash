@@ -4,7 +4,8 @@
 # 日期: 2025-10-30
 
 # 加载公共函数
-source "$(dirname "$0")/common.sh"
+UNINSTALLER_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$UNINSTALLER_LIB_DIR/common.sh"
 
 # 卸载选项
 UNINSTALL_MODE="full"  # full, config_only, keep_config
@@ -35,7 +36,7 @@ stop_clash_service() {
     log_info "停止 Clash 服务"
     
     # 停止 systemd 服务
-    if is_root && command_exists systemctl; then
+    if is_root && systemd_available; then
         local service_name=$(get_config_value "install.service_name" "clash")
         if systemctl is-active --quiet "$service_name" 2>/dev/null; then
             systemctl stop "$service_name"
@@ -77,7 +78,7 @@ uninstall_systemd_service() {
         return 0
     fi
     
-    if ! command_exists systemctl; then
+    if ! systemd_available; then
         log_info "systemd 不可用，跳过服务卸载"
         return 0
     fi
@@ -164,7 +165,7 @@ cleanup_cron() {
     log_info "清理定时任务"
     
     # 删除包含 update-subscription.sh 的定时任务
-    if crontab -l 2>/dev/null | grep -q "update-subscription.sh"; then
+    if command_exists crontab && crontab -l 2>/dev/null | grep -q "update-subscription.sh"; then
         crontab -l 2>/dev/null | grep -v "update-subscription.sh" | crontab -
         log_info "删除定时任务"
     fi
