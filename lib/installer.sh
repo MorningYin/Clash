@@ -4,7 +4,8 @@
 # 日期: 2025-10-30
 
 # 加载公共函数
-source "$(dirname "$0")/common.sh"
+INSTALLER_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$INSTALLER_LIB_DIR/common.sh"
 
 # 安装 Clash 核心程序
 install_clash_core() {
@@ -165,14 +166,14 @@ download_subscription() {
     # 下载订阅内容
     if download_file "$subscription_url" "$temp_file"; then
         # 检查是否为 Base64 编码
-        if head -1 "$temp_file" | grep -q "^[A-Za-z0-9+/]*$"; then
+        if head -n 1 "$temp_file" | grep -Eq '^[A-Za-z0-9+/=]+$'; then
             log_info "检测到 Base64 编码，正在解码"
             base64 -d "$temp_file" > "${temp_file}.decoded"
             mv "${temp_file}.decoded" "$temp_file"
         fi
         
         # 检查是否为节点链接格式
-        if head -1 "$temp_file" | grep -q "^ss://\|^trojan://\|^vmess://"; then
+        if head -n 1 "$temp_file" | grep -q "^ss://\|^trojan://\|^vmess://"; then
             log_info "检测到节点链接格式，正在转换为 Clash 配置"
             convert_subscription_to_clash "$temp_file" "$config_file"
         else
@@ -370,6 +371,12 @@ log() {
     echo "[\$(date '+%Y-%m-%d %H:%M:%S')] \$1" | tee -a "\$LOG_FILE"
 }
 
+# 环境检查
+if ! python3 -c "import yaml" >/dev/null 2>&1; then
+    log "错误: 需要 PyYAML 支持，请先安装 python3-yaml 或执行: python3 -m pip install PyYAML"
+    exit 1
+fi
+
 # 备份当前配置
 if [ -f "\$CONFIG_FILE" ]; then
     log "备份当前配置文件"
@@ -382,15 +389,15 @@ if curl -s -L -o "\$CONFIG_FILE.tmp" "\$SUBSCRIPTION_URL"; then
     log "订阅配置下载成功"
     
     # 检查是否为 Base64 编码
-    if head -1 "\$CONFIG_FILE.tmp" | grep -q "^[A-Za-z0-9+/]*\$"; then
+    if head -n 1 "\$CONFIG_FILE.tmp" | grep -Eq '^[A-Za-z0-9+/=]+$'; then
         log "检测到 Base64 编码，正在解码..."
         base64 -d "\$CONFIG_FILE.tmp" > "\$CONFIG_FILE.tmp.decoded"
         mv "\$CONFIG_FILE.tmp.decoded" "\$CONFIG_FILE.tmp"
         log "Base64 解码完成"
     fi
-    
+
     # 检查是否为节点链接格式
-    if head -1 "\$CONFIG_FILE.tmp" | grep -q "^ss://\\|^trojan://\\|^vmess://"; then
+    if head -n 1 "\$CONFIG_FILE.tmp" | grep -q "^ss://\\|^trojan://\\|^vmess://"; then
         log "检测到节点链接格式，正在转换为 Clash 配置..."
         python3 -c "
 import yaml
@@ -533,10 +540,14 @@ print(f'成功转换 {len(proxies)} 个节点')
         log "配置文件更新完成"
         
         # 重启 Clash 服务（如果正在运行）
-        if systemctl is-active --quiet clash 2>/dev/null; then
-            log "重启 Clash 服务"
-            systemctl restart clash
-            log "Clash 服务重启完成"
+        if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
+            if systemctl is-active --quiet clash 2>/dev/null; then
+                log "重启 Clash 服务"
+                systemctl restart clash
+                log "Clash 服务重启完成"
+            fi
+        else
+            log "systemd 不可用，跳过服务重启"
         fi
         
         log "订阅更新成功完成"
@@ -568,9 +579,14 @@ setup_cron() {
     
     if [ "$auto_update" = "true" ]; then
         log_info "设置自动更新定时任务"
-        
+
+        if ! command_exists crontab; then
+            log_warn "系统未安装 crontab，跳过自动更新任务，请手动配置 cron 服务"
+            return 0
+        fi
+
         local cron_job="0 */$update_interval * * * $CLASH_CONFIG_DIR/update-subscription.sh"
-        
+
         # 检查是否已存在相同的定时任务
         if ! crontab -l 2>/dev/null | grep -q "update-subscription.sh"; then
             (crontab -l 2>/dev/null; echo "$cron_job") | crontab -

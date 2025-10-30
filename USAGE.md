@@ -173,23 +173,18 @@ clash-cli
 ```
 
 管理界面功能：
-1. 启动服务
-2. 停止服务
-3. 重启服务
-4. 查看状态
-5. 更新订阅
-6. 查看日志
-7. 测试连接
-8. 代理设置
-9. 节点管理
+1. 启动代理（自动配置系统代理）
+2. 关闭代理（恢复原始网络）
+3. 查看运行状态
+4. 查看最近日志
+5. 更新订阅配置
 
 ### 命令行管理
 
 ```bash
 # 服务管理
-clash-cli start     # 启动服务
-clash-cli stop      # 停止服务
-clash-cli restart   # 重启服务
+clash-cli start     # 启动服务并开启系统代理
+clash-cli stop      # 停止服务并恢复原始网络
 clash-cli status    # 查看状态
 
 # 订阅管理
@@ -202,14 +197,13 @@ clash-cli logs      # 查看日志
 ### 代理环境变量
 
 ```bash
-# 加载代理环境变量
-source /etc/clash/proxy-env.sh  # root 用户
-source ~/.config/clash/proxy-env.sh  # 普通用户
+# 交互式控制中心会自动处理代理配置，以下命令用于手动控制：
+source /etc/clash/proxy-env.sh        # root 用户加载代理环境变量
+source ~/.config/clash/proxy-env.sh   # 普通用户加载代理环境变量
 
-# 使用便捷命令
-clash_on    # 启用代理
-clash_off   # 禁用代理
-clash_test  # 测试连接
+clash_on      # 单独开启系统/用户级代理
+clash_off     # 单独关闭代理
+clash_test    # 测试代理连通性
 ```
 
 ## 🔧 高级功能
@@ -254,7 +248,6 @@ journalctl -u clash -f
 # 使用管理工具
 clash-cli start
 clash-cli stop
-clash-cli restart
 clash-cli status
 
 # 查看日志
@@ -272,7 +265,7 @@ nano ~/.config/clash/config.yaml  # 普通用户
 /usr/local/bin/clash -t -f /etc/clash/config.yaml
 
 # 重新加载配置
-clash-cli restart
+clash-cli stop && clash-cli start
 ```
 
 ### 日志管理
