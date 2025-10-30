@@ -106,33 +106,31 @@ chmod +x install.sh
 
 ### 管理工具
 
-安装完成后，使用 `clash-cli` 管理 Clash：
+安装完成后，运行 `clash-cli` 即可打开全新的交互式控制中心：
 
 ```bash
 # 启动交互式管理界面
 clash-cli
 
-# 或者直接使用命令
-clash-cli start    # 启动服务
-clash-cli stop     # 停止服务
-clash-cli status   # 查看状态
-clash-cli update   # 更新订阅
+# 仍支持常用命令
+clash-cli start    # 启动服务并开启系统代理
+clash-cli stop     # 停止服务并恢复原始网络
+clash-cli status   # 查看当前状态
+clash-cli logs     # 查看最近日志
+clash-cli update   # 更新订阅配置
 ```
 
 ### 代理设置
 
-启用代理环境变量：
+交互式控制中心会在「启动代理」时自动设置适合当前用户的系统代理，并在「关闭代理」时恢复原始网络路径。若需要手动处理，可使用以下脚本：
 
 ```bash
-# 加载代理环境变量
-source /etc/clash/proxy-env.sh  # root 用户
-# 或
-source ~/.config/clash/proxy-env.sh  # 普通用户
+source /etc/clash/proxy-env.sh        # root 用户加载代理环境变量
+source ~/.config/clash/proxy-env.sh   # 普通用户加载代理环境变量
 
-# 使用便捷命令
-clash_on    # 启用代理
-clash_off   # 禁用代理
-clash_test  # 测试连接
+clash_on      # 单独开启系统/用户级代理
+clash_off     # 单独关闭代理
+clash_test    # 测试代理连通性
 ```
 
 ### 配置文件
@@ -219,10 +217,9 @@ systemctl enable clash
 
 ```bash
 # 使用管理工具
-clash-cli start
-clash-cli stop
-clash-cli restart
-clash-cli status
+clash-cli start   # 启动并开启代理
+clash-cli stop    # 停止并恢复网络
+clash-cli status  # 查看状态
 ```
 
 ### 日志查看
