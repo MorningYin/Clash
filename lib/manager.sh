@@ -17,21 +17,87 @@ SERVICE_USER=$(get_config_value "install.service_user" "root")
 PID_FILE="$CLASH_CONFIG_DIR/clash.pid"
 LOG_FILE="$CLASH_CONFIG_DIR/clash.log"
 
-# 检查 systemd 服务是否可用
-systemd_unit_exists() {
-    if ! systemd_available; then
-        return 1
-    fi
+# 依赖小工具：判断命令是否存在
+command_exists() { command -v "$1" >/dev/null 2>&1; }
 
-    if systemctl show "${SERVICE_NAME}.service" >/dev/null 2>&1; then
-        return 0
-    fi
+# 粗判是否在容器（Docker/K8s 等）
+is_container() {
+  # /.dockerenv 是常见特征；cgroup/kubepods/docker 关键字也是常见特征
+  [ -f "/.dockerenv" ] && return 0
+  grep -E -q 'docker|lxc|kubepods|containerd' /proc/1/cgroup 2>/dev/null && return 0
+  return 1
+}
 
-    if [ -f "/etc/systemd/system/${SERVICE_NAME}.service" ] || [ -f "/lib/systemd/system/${SERVICE_NAME}.service" ]; then
-        return 0
-    fi
+# 更稳健的 systemd 可用性检查
+systemd_available() {
+  # 1) 需要有 systemctl
+  command_exists systemctl || return 1
 
+  # 2) PID 1 必须是 systemd（普通容器里经常不是）
+  #    有些“完整 systemd 容器”会以 /sbin/init 或 systemd 作为 PID 1
+  local pid1 comm
+  if [ -r /proc/1/comm ]; then
+    comm="$(cat /proc/1/comm 2>/dev/null | tr -d '\n')"
+    case "$comm" in
+      systemd|init) : ;;
+      *) return 1 ;;
+    esac
+  else
     return 1
+  fi
+
+  # 3) systemd 自身处于可交互状态
+  #    is-system-running 常见返回：running/degraded/starting/stopping/maintenance/offline
+  #    只要不是失败且能执行，我们就认为可用（很多最小系统是 degraded 但可用）
+  local state
+  state="$(systemctl is-system-running 2>/dev/null || true)"
+  case "$state" in
+    running|degraded|starting|stopping|maintenance) return 0 ;;
+    # offline/unknown/failed/空 等都视作不可用
+    *) return 1 ;;
+  esac
+}
+
+# 更健壮的 unit 存在性检查：
+# 0 => 存在；1 => 不存在或当前环境不支持 systemd
+systemd_unit_exists() {
+  local name="$1"
+  [ -n "$name" ] || name="${SERVICE_NAME}"
+
+  # 环境不支持 systemd：在大多数云厂商的 Docker 容器里会走这里
+  systemd_available || return 1
+
+  # 方式 A：不产生副作用的读取（优先）
+  #   - systemctl show：读元信息，若 LoadState=loaded 基本即可判存在
+  if systemctl show "${name}.service" >/dev/null 2>&1; then
+    # 进一步读 LoadState 更精确（可选）
+    local load
+    load="$(systemctl show -p LoadState --value "${name}.service" 2>/dev/null || true)"
+    [ "$load" = "loaded" ] && return 0
+    # 未 loaded 也可能是别名或静态 unit，继续兜底
+  fi
+
+  # 方式 B：systemctl cat（如果能输出/返回 0，基本说明有 unit）
+  if systemctl -q cat "${name}.service" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  # 方式 C：在 unit 文件列表中查找（无需 root）
+  if systemctl list-unit-files --type=service 2>/dev/null | awk '{print $1}' | grep -Fxq "${name}.service"; then
+    return 0
+  fi
+
+  # 方式 D：传统文件路径兜底（不同发行版路径可能不同）
+  for d in \
+      /etc/systemd/system \
+      /usr/lib/systemd/system \
+      /lib/systemd/system; do
+    if [ -f "$d/${name}.service" ]; then
+      return 0
+    fi
+  done
+
+  return 1
 }
 
 # 检查服务是否运行
