@@ -4,10 +4,11 @@
 # 日期: 2025-10-30
 
 # 加载公共函数
-source "$(dirname "$0")/common.sh"
+MANAGER_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$MANAGER_LIB_DIR/common.sh"
 # 加载系统代理函数
-if [ -f "$(dirname "$0")/proxy.sh" ]; then
-	source "$(dirname "$0")/proxy.sh"
+if [ -f "$MANAGER_LIB_DIR/proxy.sh" ]; then
+        source "$MANAGER_LIB_DIR/proxy.sh"
 fi
 
 # 服务相关变量
@@ -16,14 +17,35 @@ SERVICE_USER=$(get_config_value "install.service_user" "root")
 PID_FILE="$CLASH_CONFIG_DIR/clash.pid"
 LOG_FILE="$CLASH_CONFIG_DIR/clash.log"
 
+# 检查 systemd 服务是否可用
+systemd_unit_exists() {
+    if ! command_exists systemctl; then
+        return 1
+    fi
+
+    if systemctl show "${SERVICE_NAME}.service" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    if [ -f "/etc/systemd/system/${SERVICE_NAME}.service" ] || [ -f "/lib/systemd/system/${SERVICE_NAME}.service" ]; then
+        return 0
+    fi
+
+    return 1
+}
+
 # 检查服务是否运行
 is_running() {
+    if is_root && systemd_unit_exists && systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
+        return 0
+    fi
+
     if [ -f "$PID_FILE" ]; then
-        local pid=$(cat "$PID_FILE")
-        if ps -p "$pid" > /dev/null 2>&1; then
+        local pid
+        pid=$(cat "$PID_FILE" 2>/dev/null)
+        if [ -n "$pid" ] && ps -p "$pid" > /dev/null 2>&1; then
             return 0
         else
-            # 清理过期的 PID 文件
             rm -f "$PID_FILE"
         fi
     fi
@@ -32,14 +54,28 @@ is_running() {
 
 # 获取服务状态
 get_status() {
-    if is_running; then
-        local pid=$(cat "$PID_FILE")
-        echo "运行中 (PID: $pid)"
+    if is_root && systemd_unit_exists && systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
+        local main_pid
+        main_pid=$(systemctl show -p MainPID --value "$SERVICE_NAME" 2>/dev/null)
+        if [ -n "$main_pid" ] && [ "$main_pid" != "0" ]; then
+            echo "运行中 (PID: $main_pid)"
+        else
+            echo "运行中"
+        fi
         return 0
-    else
-        echo "未运行"
-        return 1
     fi
+
+    if [ -f "$PID_FILE" ]; then
+        local pid
+        pid=$(cat "$PID_FILE" 2>/dev/null)
+        if [ -n "$pid" ] && ps -p "$pid" > /dev/null 2>&1; then
+            echo "运行中 (PID: $pid)"
+            return 0
+        fi
+    fi
+
+    echo "未运行"
+    return 1
 }
 
 # 检查端口监听
@@ -47,30 +83,39 @@ check_ports() {
     local http_port=$(get_config_value "install.http_port" "7890")
     local socks_port=$(get_config_value "install.socks_port" "7891")
     local api_port=$(get_config_value "install.api_port" "9090")
-    
+
     local ports_status=()
-    
-    # 检查 HTTP 代理端口
-    if ss -tlnp 2>/dev/null | grep -q ":$http_port "; then
-        ports_status+=("HTTP代理($http_port): ✓")
-    else
-        ports_status+=("HTTP代理($http_port): ✗")
+    local inspector=""
+    if command_exists ss; then
+        inspector="ss -tlnp"
+    elif command_exists netstat; then
+        inspector="netstat -tln"
     fi
-    
-    # 检查 SOCKS5 代理端口
-    if ss -tlnp 2>/dev/null | grep -q ":$socks_port "; then
-        ports_status+=("SOCKS5代理($socks_port): ✓")
+
+    if [ -n "$inspector" ]; then
+        if eval "$inspector" 2>/dev/null | grep -Eq "[.:]$http_port\\b"; then
+            ports_status+=("HTTP代理($http_port): ✓")
+        else
+            ports_status+=("HTTP代理($http_port): ✗")
+        fi
+
+        if eval "$inspector" 2>/dev/null | grep -Eq "[.:]$socks_port\\b"; then
+            ports_status+=("SOCKS5代理($socks_port): ✓")
+        else
+            ports_status+=("SOCKS5代理($socks_port): ✗")
+        fi
+
+        if eval "$inspector" 2>/dev/null | grep -Eq "[.:]$api_port\\b"; then
+            ports_status+=("管理面板($api_port): ✓")
+        else
+            ports_status+=("管理面板($api_port): ✗")
+        fi
     else
-        ports_status+=("SOCKS5代理($socks_port): ✗")
+        ports_status+=("HTTP代理($http_port): 未检测 (缺少 ss/netstat)")
+        ports_status+=("SOCKS5代理($socks_port): 未检测 (缺少 ss/netstat)")
+        ports_status+=("管理面板($api_port): 未检测 (缺少 ss/netstat)")
     fi
-    
-    # 检查 API 端口
-    if ss -tlnp 2>/dev/null | grep -q ":$api_port "; then
-        ports_status+=("管理面板($api_port): ✓")
-    else
-        ports_status+=("管理面板($api_port): ✗")
-    fi
-    
+
     printf '%s\n' "${ports_status[@]}"
 }
 
@@ -96,22 +141,28 @@ start_service() {
     fi
     
     # 启动服务
-    if is_root && command_exists systemctl; then
-        # 使用 systemd 管理
-        if systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
-            systemctl start "$SERVICE_NAME"
+    local started_via_systemd=false
+
+    if is_root && systemd_unit_exists; then
+        if systemctl start "$SERVICE_NAME" 2>/dev/null; then
+            started_via_systemd=true
+            sleep 1
+            local main_pid
+            main_pid=$(systemctl show -p MainPID --value "$SERVICE_NAME" 2>/dev/null)
+            if [ -n "$main_pid" ] && [ "$main_pid" != "0" ]; then
+                echo "$main_pid" > "$PID_FILE"
+            fi
         else
-            # 直接启动
-            start_direct
+            log_warn "systemd 启动失败，尝试直接启动"
         fi
-    else
-        # 直接启动
+    fi
+
+    if [ "$started_via_systemd" = false ]; then
         start_direct
     fi
-    
-    # 等待服务启动
+
     sleep 2
-    
+
     if is_running; then
         success "Clash 服务启动成功"
         show_service_info
@@ -124,14 +175,15 @@ start_service() {
 # 直接启动服务
 start_direct() {
     log_info "直接启动 Clash 服务"
-    
+
     # 启动 Clash
     nohup "$CLASH_BIN_DIR/clash" -d "$CLASH_CONFIG_DIR" > "$LOG_FILE" 2>&1 &
     local clash_pid=$!
-    
+
     # 保存 PID
+    mkdir -p "$(dirname "$PID_FILE")" 2>/dev/null || true
     echo "$clash_pid" > "$PID_FILE"
-    
+
     log_info "Clash 进程启动 (PID: $clash_pid)"
 }
 
@@ -144,22 +196,24 @@ stop_service() {
         return 0
     fi
     
-    if is_root && command_exists systemctl; then
-        # 使用 systemd 管理
-        if systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
-            systemctl stop "$SERVICE_NAME"
+    local stopped_via_systemd=false
+
+    if is_root && systemd_unit_exists; then
+        if systemctl stop "$SERVICE_NAME" 2>/dev/null; then
+            stopped_via_systemd=true
         else
-            # 直接停止
-            stop_direct
+            log_warn "systemd 停止失败，尝试直接停止"
         fi
+    fi
+
+    if [ "$stopped_via_systemd" = true ]; then
+        rm -f "$PID_FILE"
     else
-        # 直接停止
         stop_direct
     fi
-    
-    # 等待服务停止
+
     sleep 2
-    
+
     if ! is_running; then
         success "Clash 服务已停止"
     else
@@ -170,22 +224,35 @@ stop_service() {
 
 # 直接停止服务
 stop_direct() {
-    local pid=$(cat "$PID_FILE")
+    if [ ! -f "$PID_FILE" ]; then
+        log_warn "未找到 PID 文件，尝试通过进程名停止"
+        if command_exists pkill; then
+            pkill -f "$CLASH_BIN_DIR/clash" 2>/dev/null || true
+        else
+            log_warn "系统缺少 pkill 命令，请手动检查 Clash 进程"
+        fi
+        return 0
+    fi
+
+    local pid
+    pid=$(cat "$PID_FILE" 2>/dev/null)
+    if [ -z "$pid" ]; then
+        rm -f "$PID_FILE"
+        return 0
+    fi
+
     log_info "停止 Clash 进程 (PID: $pid)"
-    
-    # 尝试优雅停止
-    kill "$pid" 2>/dev/null
-    
-    # 等待进程结束
-    for i in {1..10}; do
+
+    kill "$pid" 2>/dev/null || true
+
+    for _ in {1..10}; do
         if ! ps -p "$pid" > /dev/null 2>&1; then
             rm -f "$PID_FILE"
             return 0
         fi
         sleep 1
     done
-    
-    # 强制停止
+
     log_warn "强制停止 Clash 进程"
     kill -9 "$pid" 2>/dev/null || true
     rm -f "$PID_FILE"

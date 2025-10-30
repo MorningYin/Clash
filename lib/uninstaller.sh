@@ -4,7 +4,8 @@
 # 日期: 2025-10-30
 
 # 加载公共函数
-source "$(dirname "$0")/common.sh"
+UNINSTALLER_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$UNINSTALLER_LIB_DIR/common.sh"
 
 # 卸载选项
 UNINSTALL_MODE="full"  # full, config_only, keep_config
