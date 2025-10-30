@@ -9,6 +9,7 @@ install:
   # 普通用户: ~/.local/bin, ~/.config/clash
   clash_bin_dir: "/usr/local/bin"
   clash_config_dir: "/etc/clash"
+  clash_user_bin_dir: "~/.local/bin"
   clash_user_config_dir: "~/.config/clash"
   
   # 服务配置
@@ -65,6 +66,8 @@ dependencies:
     - "wget"
     - "python3"
     - "base64"
+  python_modules:
+    - "yaml"
   optional:
     - "yq"  # YAML 处理工具
     - "jq"  # JSON 处理工具
