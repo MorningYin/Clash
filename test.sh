@@ -114,7 +114,11 @@ test_dependencies() {
     run_test "wget 命令" "command -v wget >/dev/null"
     run_test "python3 命令" "command -v python3 >/dev/null"
     run_test "base64 命令" "command -v base64 >/dev/null"
-    run_test "ss 命令" "command -v ss >/dev/null"
+    if command -v ss >/dev/null || command -v netstat >/dev/null; then
+        run_test "端口检测工具 (ss 或 netstat)" "command -v ss >/dev/null || command -v netstat >/dev/null"
+    else
+        echo -e "测试: 端口检测工具 (ss 或 netstat) ... ${YELLOW}跳过${NC}"
+    fi
     
     echo ""
 }
