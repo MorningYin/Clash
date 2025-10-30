@@ -2,7 +2,8 @@
 # 系统/用户级 一键代理设置库
 # 依赖: lib/common.sh
 
-source "$(dirname "$0")/common.sh"
+PROXY_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$PROXY_LIB_DIR/common.sh"
 
 # 常量与工具
 PROXY_MARK_BEGIN="# >>> clash-installer proxy BEGIN"

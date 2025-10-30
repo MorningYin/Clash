@@ -4,7 +4,8 @@
 # 日期: 2025-10-30
 
 # 加载公共函数
-source "$(dirname "$0")/common.sh"
+INSTALLER_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$INSTALLER_LIB_DIR/common.sh"
 
 # 安装 Clash 核心程序
 install_clash_core() {

@@ -4,10 +4,11 @@
 # 日期: 2025-10-30
 
 # 加载公共函数
-source "$(dirname "$0")/common.sh"
+MANAGER_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$MANAGER_LIB_DIR/common.sh"
 # 加载系统代理函数
-if [ -f "$(dirname "$0")/proxy.sh" ]; then
-	source "$(dirname "$0")/proxy.sh"
+if [ -f "$MANAGER_LIB_DIR/proxy.sh" ]; then
+        source "$MANAGER_LIB_DIR/proxy.sh"
 fi
 
 # 服务相关变量
