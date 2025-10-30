@@ -134,7 +134,7 @@ subscription:
 # 本地包配置
 packages:
   clash:
-    local_path: "packages/mihomo-linux-amd64-v1.19.15.gz"
+    local_path: "packages/mihomo-linux-amd64-compatible-v1.19.15.gz"
     download_url: "https://github.com/MetaCubeX/mihomo/releases/download/v1.19.15/mihomo-linux-amd64-compatible-v1.19.15.gz"
 ```
 
