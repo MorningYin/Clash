@@ -44,15 +44,25 @@ init_logging() {
         *) CURRENT_LOG_LEVEL=$LOG_LEVEL_INFO ;;
     esac
     
+    # 设置彩色输出
+    local color_setting=$(get_config_value "ui.enable_colors" "true")
+    if [ "$color_setting" = "false" ]; then
+        ENABLE_COLORS=false
+    else
+        ENABLE_COLORS=true
+    fi
+
     # 设置日志文件
     if is_root; then
         LOG_FILE=$(get_config_value "logging.log_file" "/var/log/clash-installer.log")
     else
         LOG_FILE=$(expand_path "$(get_config_value "logging.user_log_file" "~/.local/log/clash-installer.log")")
     fi
-    
+
     # 创建日志目录
-    mkdir -p "$(dirname "$LOG_FILE")"
+    if [ -n "$LOG_FILE" ]; then
+        mkdir -p "$(dirname "$LOG_FILE")"
+    fi
 }
 
 # 检查是否为 root 用户
@@ -78,20 +88,174 @@ expand_path() {
     echo "$path"
 }
 
-# 简单的 YAML 解析函数
+# 解析配置文件
 get_config_value() {
     local key="$1"
-    local default="$2"
-    local value
-    
-    if [ -f "$CONFIG_FILE" ]; then
-        value=$(grep "^[[:space:]]*${key}:" "$CONFIG_FILE" | head -1 | sed 's/.*:[[:space:]]*//' | sed 's/[[:space:]]*$//' | sed 's/^"//' | sed 's/"$//')
+    local default_value="${2:-}"
+
+    if [ ! -f "$CONFIG_FILE" ]; then
+        echo "$default_value"
+        return 0
     fi
-    
-    if [ -n "$value" ] && [ "$value" != "null" ]; then
-        echo "$value"
+
+    local result
+    result=$(python3 - "$CONFIG_FILE" "$key" "$default_value" <<'PY'
+import ast
+import sys
+from pathlib import Path
+
+config_path = Path(sys.argv[1])
+key_path = sys.argv[2].split('.') if sys.argv[2] else []
+default = sys.argv[3] if len(sys.argv) > 3 else ''
+
+try:
+    import yaml  # type: ignore
+except Exception:  # pragma: no cover - 作为兜底，保持脚本健壮性
+    yaml = None
+
+
+def parse_scalar(value: str):
+    value = value.strip()
+    if value == '':
+        return None
+    lowered = value.lower()
+    if lowered in {'true', 'false'}:
+        return lowered == 'true'
+    try:
+        if value.startswith('0') and value != '0' and not value.startswith('0.'):
+            # 保留原始字符串，避免八进制解析
+            raise ValueError
+        return int(value)
+    except ValueError:
+        try:
+            return float(value)
+        except ValueError:
+            pass
+    if (value.startswith('[') and value.endswith(']')) or (
+        value.startswith('(') and value.endswith(')')
+    ) or (value.startswith('{') and value.endswith('}')):
+        try:
+            return ast.literal_eval(value)
+        except Exception:
+            return value
+    if (value.startswith('"') and value.endswith('"')) or (
+        value.startswith("'") and value.endswith("'")
+    ):
+        return value[1:-1]
+    return value
+
+
+def simple_yaml_load(text: str):
+    parsed_lines = []
+    for raw in text.splitlines():
+        no_comment = raw.split('#', 1)[0].rstrip()
+        if not no_comment.strip():
+            continue
+        indent = len(raw) - len(raw.lstrip(' '))
+        content = no_comment.lstrip()
+        parsed_lines.append((indent, content))
+
+    root = {}
+    stack = [(-1, root)]
+
+    for index, (indent, content) in enumerate(parsed_lines):
+        while len(stack) > 1 and indent <= stack[-1][0]:
+            stack.pop()
+
+        container = stack[-1][1]
+        if content.startswith('- '):
+            value_part = content[2:].strip()
+            value = parse_scalar(value_part)
+            if isinstance(container, list):
+                container.append(value)
+            elif isinstance(container, dict):
+                # 将最近的键转换为列表
+                if container:
+                    last_key = next(reversed(container))
+                    if not isinstance(container[last_key], list):
+                        container[last_key] = []
+                    container[last_key].append(value)
+                    stack.append((indent, container[last_key]))
+                else:
+                    raise ValueError('Invalid YAML structure')
+            continue
+
+        if ':' not in content:
+            continue
+
+        key, value_part = content.split(':', 1)
+        key = key.strip()
+        value_part = value_part.strip()
+
+        if isinstance(container, list):
+            new_item = {}
+            container.append(new_item)
+            container = new_item
+            stack.append((indent, container))
+
+        if value_part == '':
+            next_container_type = dict
+            if index + 1 < len(parsed_lines):
+                next_indent, next_content = parsed_lines[index + 1]
+                if next_indent > indent and next_content.startswith('- '):
+                    next_container_type = list
+
+            if next_container_type is list:
+                container[key] = []
+            else:
+                container[key] = {}
+            stack.append((indent, container[key]))
+        else:
+            value = parse_scalar(value_part)
+            container[key] = value
+            if isinstance(value, (dict, list)):
+                stack.append((indent, value))
+
+    return root
+
+
+def load_config(path: Path):
+    text = path.read_text(encoding='utf-8')
+    if yaml is not None:
+        try:
+            data = yaml.safe_load(text)
+            return data if data is not None else {}
+        except Exception:
+            pass
+    try:
+        return simple_yaml_load(text)
+    except Exception:
+        return {}
+
+
+if not config_path.exists():
+    print(default)
+    sys.exit(0)
+
+config = load_config(config_path)
+value = config
+for part in key_path:
+    if isinstance(value, dict) and part in value:
+        value = value[part]
+    else:
+        print(default)
+        break
+else:
+    if value is None:
+        print(default)
+    elif isinstance(value, bool):
+        print('true' if value else 'false')
+    elif isinstance(value, (list, tuple)):
+        print(' '.join(str(item) for item in value))
+    else:
+        print(value)
+PY
+    ) || true
+
+    if [ -n "$result" ]; then
+        echo "$result"
     else
-        echo "${default:-}"
+        echo "$default_value"
     fi
 }
 
@@ -239,21 +403,47 @@ command_exists() {
 
 # 检查依赖
 check_dependencies() {
-    local missing_deps=()
-    local required_deps=($(get_config_value "dependencies.required" ""))
-    
+    local missing_commands=()
+    local required_deps_raw="$(get_config_value "dependencies.required" "")"
+    local python_modules_raw="$(get_config_value "dependencies.python_modules" "")"
+
+    local required_deps=()
+    if [ -n "$required_deps_raw" ]; then
+        read -r -a required_deps <<< "$required_deps_raw"
+    fi
+
     for dep in "${required_deps[@]}"; do
-        if ! command_exists "$dep"; then
-            missing_deps+=("$dep")
+        if [ -n "$dep" ] && ! command_exists "$dep"; then
+            missing_commands+=("$dep")
         fi
     done
-    
-    if [ ${#missing_deps[@]} -gt 0 ]; then
-        error "缺少必要依赖: ${missing_deps[*]}"
-        info "请安装缺少的依赖后重试"
+
+    local missing_modules=()
+    local python_modules=()
+    if [ -n "$python_modules_raw" ]; then
+        read -r -a python_modules <<< "$python_modules_raw"
+    fi
+
+    for module in "${python_modules[@]}"; do
+        if [ -z "$module" ]; then
+            continue
+        fi
+        if ! python3 -c "import importlib, sys; importlib.import_module(sys.argv[1])" "$module" >/dev/null 2>&1; then
+            missing_modules+=("$module")
+        fi
+    done
+
+    if [ ${#missing_commands[@]} -gt 0 ] || [ ${#missing_modules[@]} -gt 0 ]; then
+        if [ ${#missing_commands[@]} -gt 0 ]; then
+            error "缺少必要命令: ${missing_commands[*]}"
+        fi
+        if [ ${#missing_modules[@]} -gt 0 ]; then
+            error "缺少 Python 模块: ${missing_modules[*]}"
+            info "可执行 'python3 -m pip install ${missing_modules[*]}' 或使用系统包管理器安装"
+        fi
         return 1
     fi
-    
+
     return 0
 }
 
@@ -426,10 +616,10 @@ get_install_paths() {
         CLASH_BIN_DIR=$(get_config_value "install.clash_bin_dir" "/usr/local/bin")
         CLASH_CONFIG_DIR=$(get_config_value "install.clash_config_dir" "/etc/clash")
     else
-        CLASH_BIN_DIR=$(expand_path "$(get_config_value "install.clash_user_config_dir" "~/.local/bin")")
+        CLASH_BIN_DIR=$(expand_path "$(get_config_value "install.clash_user_bin_dir" "~/.local/bin")")
         CLASH_CONFIG_DIR=$(expand_path "$(get_config_value "install.clash_user_config_dir" "~/.config/clash")")
     fi
-    
+
     export CLASH_BIN_DIR
     export CLASH_CONFIG_DIR
 }
