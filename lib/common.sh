@@ -3,9 +3,9 @@
 # 作者: Auto
 # 日期: 2025-10-30
 
-# 脚本目录
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+# 公共库所在目录
+COMMON_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$COMMON_LIB_DIR")"
 CONFIG_FILE="$PROJECT_DIR/config.yaml"
 
 # 颜色定义
