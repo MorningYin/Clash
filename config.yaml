@@ -1,0 +1,100 @@
+# Clash 一键安装程序配置文件
+# 作者: Auto
+# 日期: 2025-10-30
+
+# 安装配置
+install:
+  # 安装目录（root用户和普通用户会自动选择不同路径）
+  # root: /usr/local/bin, /etc/clash
+  # 普通用户: ~/.local/bin, ~/.config/clash
+  clash_bin_dir: "/usr/local/bin"
+  clash_config_dir: "/etc/clash"
+  clash_user_config_dir: "~/.config/clash"
+  
+  # 服务配置
+  service_name: "clash"
+  service_user: "root"
+  
+  # 代理端口配置
+  http_port: 7890
+  socks_port: 7891
+  api_port: 9090
+  dns_port: 53
+
+# 本地安装包配置（优先使用）
+packages:
+  # Clash 可执行文件
+  clash:
+    # 本地路径（相对于脚本目录）
+    local_path: "packages/mihomo-linux-amd64-v1.19.15.gz"
+    # 备用下载链接
+    download_url: "https://github.com/MetaCubeX/mihomo/releases/download/v1.19.15/mihomo-linux-amd64-compatible-v1.19.15.gz"
+    # 文件校验（可选）
+    checksum: ""
+  
+  # GeoIP 数据库
+  country_mmdb:
+    local_path: "packages/Country.mmdb"
+    download_url: "https://github.com/Dreamacro/maxmind-geoip/releases/latest/download/Country.mmdb"
+    checksum: ""
+
+# 订阅配置
+subscription:
+  # 订阅链接
+  url: "https://VDvoja.doggygo.top:8443/api/v1/client/fc113e4437daf0a2c463ab11a349f813"
+  # 更新间隔（小时）
+  update_interval: 24
+  # 自动更新（true/false）
+  auto_update: true
+
+# 系统配置
+system:
+  # 支持的架构
+  supported_archs: ["x86_64", "amd64", "aarch64", "arm64"]
+  # 支持的系统
+  supported_os: ["linux"]
+  # 最小内存要求（MB）
+  min_memory: 128
+  # 最小磁盘空间要求（MB）
+  min_disk_space: 100
+
+# 依赖检查
+dependencies:
+  required:
+    - "curl"
+    - "wget"
+    - "python3"
+    - "base64"
+  optional:
+    - "yq"  # YAML 处理工具
+    - "jq"  # JSON 处理工具
+
+# 日志配置
+logging:
+  # 日志级别 (debug, info, warn, error)
+  level: "info"
+  # 日志文件路径
+  log_file: "/var/log/clash-installer.log"
+  user_log_file: "~/.local/log/clash-installer.log"
+  # 最大日志文件大小（MB）
+  max_log_size: 10
+  # 保留的日志文件数量
+  max_log_files: 5
+
+# 安全配置
+security:
+  # 是否验证下载文件的校验和
+  verify_checksums: false
+  # 是否使用 HTTPS 下载
+  force_https: true
+  # 下载超时时间（秒）
+  download_timeout: 300
+
+# 用户界面配置
+ui:
+  # 是否启用彩色输出
+  enable_colors: true
+  # 是否显示进度条
+  show_progress: true
+  # 是否显示详细输出
+  verbose: false
