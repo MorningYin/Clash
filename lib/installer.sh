@@ -540,10 +540,14 @@ print(f'成功转换 {len(proxies)} 个节点')
         log "配置文件更新完成"
         
         # 重启 Clash 服务（如果正在运行）
-        if systemctl is-active --quiet clash 2>/dev/null; then
-            log "重启 Clash 服务"
-            systemctl restart clash
-            log "Clash 服务重启完成"
+        if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
+            if systemctl is-active --quiet clash 2>/dev/null; then
+                log "重启 Clash 服务"
+                systemctl restart clash
+                log "Clash 服务重启完成"
+            fi
+        else
+            log "systemd 不可用，跳过服务重启"
         fi
         
         log "订阅更新成功完成"
@@ -575,9 +579,14 @@ setup_cron() {
     
     if [ "$auto_update" = "true" ]; then
         log_info "设置自动更新定时任务"
-        
+
+        if ! command_exists crontab; then
+            log_warn "系统未安装 crontab，跳过自动更新任务，请手动配置 cron 服务"
+            return 0
+        fi
+
         local cron_job="0 */$update_interval * * * $CLASH_CONFIG_DIR/update-subscription.sh"
-        
+
         # 检查是否已存在相同的定时任务
         if ! crontab -l 2>/dev/null | grep -q "update-subscription.sh"; then
             (crontab -l 2>/dev/null; echo "$cron_job") | crontab -

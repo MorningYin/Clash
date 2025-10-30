@@ -33,6 +33,9 @@ ENABLE_COLORS=true
 # 日志文件路径
 LOG_FILE=""
 
+# 缓存的 systemd 检测结果
+_SYSTEMD_AVAILABLE_CACHE=""
+
 # 初始化日志系统
 init_logging() {
     local log_level=$(get_config_value "logging.level" "info")
@@ -399,6 +402,32 @@ show_progress() {
 # 检查命令是否存在
 command_exists() {
     command -v "$1" >/dev/null 2>&1
+}
+
+# 检查 systemd 是否可用
+systemd_available() {
+    if [ -n "$_SYSTEMD_AVAILABLE_CACHE" ]; then
+        [ "$_SYSTEMD_AVAILABLE_CACHE" = "true" ]
+        return $?
+    fi
+
+    if ! command_exists systemctl; then
+        _SYSTEMD_AVAILABLE_CACHE="false"
+        return 1
+    fi
+
+    if [ ! -d /run/systemd/system ]; then
+        _SYSTEMD_AVAILABLE_CACHE="false"
+        return 1
+    fi
+
+    if systemctl list-units >/dev/null 2>&1 || systemctl list-unit-files >/dev/null 2>&1; then
+        _SYSTEMD_AVAILABLE_CACHE="true"
+        return 0
+    fi
+
+    _SYSTEMD_AVAILABLE_CACHE="false"
+    return 1
 }
 
 # 检查依赖

@@ -19,7 +19,10 @@
 - **架构**: x86_64, aarch64, arm64
 - **内存**: 最少 128MB
 - **磁盘空间**: 最少 100MB
-- **依赖**: curl, wget, python3, base64
+- **必备依赖**: `curl`, `wget`, `python3` (需包含 PyYAML 模块)、`base64`
+- **可选依赖**: `crontab`、`systemd`
+
+> ⚠️ 在 Docker、容器或精简发行版中，`crontab` 与 `systemd` 可能不存在。程序会自动跳过相关功能（订阅定时更新、systemd 服务管理），核心功能不受影响。
 
 ## 🚀 快速开始
 
@@ -62,7 +65,14 @@ subscription:
   update_interval: 24
 ```
 
-### 4. 运行安装
+### 4. 初始化环境（仅首次安装需要）
+
+```bash
+# 安装 Python 依赖
+python3 -m pip install --user pyyaml
+```
+
+### 5. 运行安装
 
 ```bash
 # 给安装脚本执行权限
@@ -176,9 +186,11 @@ system:
 # 手动更新订阅
 /etc/clash/update-subscription.sh
 
-# 查看定时任务
+# 查看定时任务（需要 crontab）
 crontab -l | grep clash
 ```
+
+> 在没有 `crontab` 的环境中，程序会提示并跳过定时任务，但仍可通过上述脚本进行手动更新。
 
 ### 服务管理
 
@@ -200,6 +212,8 @@ systemctl status clash
 # 开机自启
 systemctl enable clash
 ```
+
+> 如果宿主机未使用 systemd（例如 Docker 容器），安装脚本会自动跳过 service 创建，可使用 CLI 管理工具（见下）来控制 Clash。
 
 #### 普通用户服务
 

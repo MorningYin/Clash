@@ -125,18 +125,18 @@ EOF
 		append_proxy_block "/etc/dnf/dnf.conf" "proxy=${HTTP_PROXY_VAL}"
 	fi
 	# systemd 全局环境
-	if command_exists systemctl; then
-		mkdir -p /etc/systemd/system.conf.d
-		cat > /etc/systemd/system.conf.d/proxy.conf <<EOF
+        if systemd_available; then
+                mkdir -p /etc/systemd/system.conf.d
+                cat > /etc/systemd/system.conf.d/proxy.conf <<EOF
 [Manager]
 DefaultEnvironment=HTTP_PROXY=${HTTP_PROXY_VAL} HTTPS_PROXY=${HTTP_PROXY_VAL} ALL_PROXY=${SOCKS_PROXY_VAL} NO_PROXY=${NO_PROXY_VAL}
 EOF
-		systemctl daemon-reload || true
-	fi
-	# Docker 守护进程
-	if command_exists systemctl && [ -d /etc/systemd/system ]; then
-		mkdir -p /etc/systemd/system/docker.service.d
-		cat > /etc/systemd/system/docker.service.d/proxy.conf <<EOF
+                systemctl daemon-reload || true
+        fi
+        # Docker 守护进程
+        if systemd_available && [ -d /etc/systemd/system ]; then
+                mkdir -p /etc/systemd/system/docker.service.d
+                cat > /etc/systemd/system/docker.service.d/proxy.conf <<EOF
 [Service]
 Environment=HTTP_PROXY=${HTTP_PROXY_VAL}
 Environment=HTTPS_PROXY=${HTTP_PROXY_VAL}
@@ -167,16 +167,16 @@ system_proxy_off() {
 	[ -f /etc/yum.conf ] && remove_proxy_block /etc/yum.conf
 	[ -f /etc/dnf/dnf.conf ] && remove_proxy_block /etc/dnf/dnf.conf
 	# systemd 全局
-	if command_exists systemctl; then
-		rm -f /etc/systemd/system.conf.d/proxy.conf 2>/dev/null || true
-		systemctl daemon-reload || true
-	fi
-	# docker
-	if command_exists systemctl; then
-		rm -f /etc/systemd/system/docker.service.d/proxy.conf 2>/dev/null || true
-		systemctl daemon-reload || true
-		# 不强制重启 docker，避免打断业务
-	fi
+        if systemd_available; then
+                rm -f /etc/systemd/system.conf.d/proxy.conf 2>/dev/null || true
+                systemctl daemon-reload || true
+        fi
+        # docker
+        if systemd_available; then
+                rm -f /etc/systemd/system/docker.service.d/proxy.conf 2>/dev/null || true
+                systemctl daemon-reload || true
+                # 不强制重启 docker，避免打断业务
+        fi
 	# git system/global
 	if command_exists git; then
 		git config --system --unset http.proxy 2>/dev/null || true
