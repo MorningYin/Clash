@@ -70,11 +70,9 @@ show_menu() {
   1. 启动代理
   2. 关闭代理
   3. 查看运行状态
-  4. 查看最近日志
-  5. 更新订阅
   0. 退出
 MENU
-    echo -n "请选择操作 [0-5]: "
+    echo -n "请选择操作 [0-3]: "
 }
 
 pause() {
@@ -82,7 +80,20 @@ pause() {
 }
 
 # ===== 功能封装 =====
+# 启动 Clash 代理服务并配置系统级代理
+# 功能:
+#   - 启动 Clash 服务进程
+#   - 配置系统级代理（影响所有终端和应用程序）
+# 需要: root 权限
+# 返回: 0 表示成功，1 表示失败
 start_proxy() {
+    # 检查 root 权限（系统级代理需要 root）
+    if ! is_root; then
+        error "启动全局代理需要 root 权限"
+        error "请使用 sudo clash-cli start 或切换到 root 用户"
+        return 1
+    fi
+
     local started=true
 
     if ! start_service; then
@@ -90,48 +101,58 @@ start_proxy() {
     fi
 
     if $started; then
-        if ! proxy_on; then
-            warn "Clash 已启动，但未能自动配置系统代理，请检查权限"
+        # 强制使用系统级代理（--system）以实现全局控制
+        if ! proxy_on --system; then
+            error "Clash 已启动，但未能配置系统级代理，请检查权限"
+            started=false
         else
-            success "网络代理已开启"
+            success "全局代理已开启（系统级）"
         fi
     fi
 
     $started
 }
 
+# 停止 Clash 代理服务并完全恢复系统网络配置
+# 功能:
+#   - 停止 Clash 服务进程
+#   - 清理所有系统级代理配置（确保完全恢复）
+# 需要: root 权限
+# 返回: 0 表示成功，1 表示失败
 stop_proxy() {
+    # 检查 root 权限（关闭系统级代理需要 root）
+    if ! is_root; then
+        error "关闭全局代理需要 root 权限"
+        error "请使用 sudo clash-cli stop 或切换到 root 用户"
+        return 1
+    fi
+
     local ok=true
 
-    if ! proxy_off; then
-        warn "未检测到需要恢复的系统代理或权限不足"
+    # 先停止服务
+    if ! stop_service; then
         ok=false
     fi
 
-    if ! stop_service; then
+    # 强制使用系统级代理关闭（--system）以确保完全恢复
+    if ! proxy_off --system; then
+        warn "未能完全恢复系统代理配置，请手动检查"
         ok=false
     else
-        success "Clash 已关闭，网络路径已恢复"
+        success "全局代理已关闭，系统网络路径已完全恢复"
     fi
 
     $ok
 }
 
+# 显示 Clash 服务运行状态
+# 功能:
+#   - 显示服务状态（运行中/未运行）
+#   - 显示代理端口信息
+#   - 显示端口监听状态
 show_status() {
     echo
     status_summary
-}
-
-show_logs() {
-    echo
-    view_logs 40 || true
-    echo
-}
-
-perform_update() {
-    echo
-    update_subscription || true
-    echo
 }
 
 # ===== 命令模式 =====
@@ -145,8 +166,6 @@ Clash 控制中心
   start      启动 Clash 并开启系统代理
   stop       停止 Clash 并恢复网络路径
   status     查看当前运行状态
-  logs       查看最近日志
-  update     更新订阅配置
   menu       打开交互式控制台 (默认)
   help       显示本帮助信息
 HELP
@@ -163,12 +182,6 @@ handle_command() {
             ;;
         status)
             show_status
-            ;;
-        logs)
-            show_logs
-            ;;
-        update)
-            perform_update
             ;;
         help|-h|--help)
             show_help
@@ -207,14 +220,6 @@ while true; do
             ;;
         3)
             show_status
-            pause
-            ;;
-        4)
-            show_logs
-            pause
-            ;;
-        5)
-            perform_update
             pause
             ;;
         0)

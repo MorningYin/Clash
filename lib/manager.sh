@@ -384,35 +384,7 @@ export ALL_PROXY=socks5://127.0.0.1:$socks_port
 export no_proxy="localhost,127.0.0.1,::1"
 export NO_PROXY="localhost,127.0.0.1,::1"
 
-# 便捷函数
-clash_on() {
-    echo "启用 Clash 代理..."
-    export http_proxy=http://127.0.0.1:$http_port
-    export https_proxy=http://127.0.0.1:$http_port
-    export HTTP_PROXY=http://127.0.0.1:$http_port
-    export HTTPS_PROXY=http://127.0.0.1:$http_port
-    export all_proxy=socks5://127.0.0.1:$socks_port
-    export ALL_PROXY=socks5://127.0.0.1:$socks_port
-    echo "代理已启用"
-}
-
-clash_off() {
-    echo "禁用 Clash 代理..."
-    unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY all_proxy ALL_PROXY
-    echo "代理已禁用"
-}
-
-clash_test() {
-    echo "测试代理连接..."
-    if curl -x http://127.0.0.1:$http_port -s -o /dev/null -w "HTTP 代理测试: %{http_code}\n" http://www.google.com; then
-        echo "代理连接正常"
-    else
-        echo "代理连接失败"
-    fi
-}
-
 echo "Clash 代理环境变量已加载"
-echo "使用 clash_on 启用代理，clash_off 禁用代理，clash_test 测试连接"
 EOF
     
     chmod +x "$proxy_file"

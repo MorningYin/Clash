@@ -391,23 +391,16 @@ show_install_result() {
     echo "   或直接运行: $CLASH_BIN_DIR/clash -d $CLASH_CONFIG_DIR"
     echo ""
     echo "2. 管理服务:"
-    echo "   clash-cli  # 交互式管理界面"
-    echo ""
-    echo "3. 代理设置:"
-    echo "   source $CLASH_CONFIG_DIR/proxy-env.sh"
-    echo "   clash_on   # 启用代理"
-    echo "   clash_off  # 禁用代理"
-    echo "   clash_test # 测试连接"
-    echo ""
-    echo "4. 更新订阅:"
-    echo "   $CLASH_CONFIG_DIR/update-subscription.sh"
+    echo "   clash-cli start    # 启动代理"
+    echo "   clash-cli stop     # 停止代理"
+    echo "   clash-cli status   # 查看状态"
+    echo "   clash-cli          # 交互式管理界面"
     echo ""
     
     # 显示配置文件位置
     echo -e "${YELLOW}配置文件:${NC}"
     echo "  主配置: $CLASH_CONFIG_DIR/config.yaml"
     echo "  日志文件: $CLASH_CONFIG_DIR/clash.log"
-    echo "  更新脚本: $CLASH_CONFIG_DIR/update-subscription.sh"
     echo ""
     
     # 显示代理信息
