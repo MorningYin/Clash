@@ -5,7 +5,21 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-LIB_DIR="$PROJECT_DIR/lib"
+
+# 智能检测库文件目录（优先使用安装时设置的路径）
+if [ -n "${LIB_DIR:-}" ] && [ -d "$LIB_DIR" ]; then
+    # 使用安装时设置的 LIB_DIR
+    :
+elif [ -d "/usr/local/share/clash-installer/lib" ]; then
+    # 使用标准安装路径
+    LIB_DIR="/usr/local/share/clash-installer/lib"
+elif [ -d "$PROJECT_DIR/lib" ]; then
+    # 使用项目目录（开发模式）
+    LIB_DIR="$PROJECT_DIR/lib"
+else
+    echo "错误: 找不到库文件目录" >&2
+    exit 1
+fi
 
 # 加载共享库
 source "$LIB_DIR/common.sh"
@@ -17,7 +31,7 @@ source "$LIB_DIR/manager.sh"
 print_header() {
     clear 2>/dev/null || true
     echo -e "${BLUE}╔══════════════════════════════════════════════╗${NC}"
-    echo -e "${BLUE}║              Clash 控制中心                  ║${NC}"
+    echo -e "${BLUE}║              Clash 控制中心                   ║${NC}"
     echo -e "${BLUE}╚══════════════════════════════════════════════╝${NC}"
     echo
 }

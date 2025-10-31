@@ -187,7 +187,7 @@ system_proxy_off() {
 
 # 入口 API：proxy_on/off [--system|--user]
 proxy_on() {
-	local scope="$1"
+	local scope="${1:-}"
 	if [ "$scope" = "--system" ]; then
 		system_proxy_on
 	elif [ "$scope" = "--user" ]; then
@@ -198,7 +198,7 @@ proxy_on() {
 }
 
 proxy_off() {
-	local scope="$1"
+	local scope="${1:-}"
 	if [ "$scope" = "--system" ]; then
 		system_proxy_off
 	elif [ "$scope" = "--user" ]; then
