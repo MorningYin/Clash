@@ -9,6 +9,7 @@ install:
   # 普通用户: ~/.local/bin, ~/.config/clash
   clash_bin_dir: "/usr/local/bin"
   clash_config_dir: "/etc/clash"
+  clash_user_bin_dir: "~/.local/bin"
   clash_user_config_dir: "~/.config/clash"
   
   # 服务配置
@@ -58,6 +59,16 @@ system:
   # 最小磁盘空间要求（MB）
   min_disk_space: 100
 
+# 网络诊断
+diagnostics:
+  # 每个探测的超时时间（秒）
+  timeout: 8
+  # 使用代理进行连通性探测的目标列表（格式: 名称|URL）
+  https_probes:
+    - "Cloudflare|https://www.cloudflare.com/cdn-cgi/trace"
+    - "Microsoft|https://www.microsoft.com"
+    - "Baidu|https://www.baidu.com"
+
 # 依赖检查
 dependencies:
   required:
@@ -65,6 +76,8 @@ dependencies:
     - "wget"
     - "python3"
     - "base64"
+  python_modules:
+    - "yaml"
   optional:
     - "yq"  # YAML 处理工具
     - "jq"  # JSON 处理工具

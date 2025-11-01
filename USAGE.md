@@ -158,7 +158,17 @@ security:
   verify_checksums: false
   force_https: true
   download_timeout: 300
+
+# 网络诊断
+diagnostics:
+  timeout: 8
+  https_probes:
+    - "Cloudflare|https://www.cloudflare.com/cdn-cgi/trace"
+    - "Microsoft|https://www.microsoft.com"
+    - "Baidu|https://www.baidu.com"
 ```
+
+> `diagnostics` 配置用于 `clash-cli diagnose` 命令，可根据实际情况添加或替换目标站点。
 
 ## 🎛️ 管理工具使用
 
@@ -173,23 +183,18 @@ clash-cli
 ```
 
 管理界面功能：
-1. 启动服务
-2. 停止服务
-3. 重启服务
-4. 查看状态
-5. 更新订阅
-6. 查看日志
-7. 测试连接
-8. 代理设置
-9. 节点管理
+1. 启动代理（自动配置系统代理）
+2. 关闭代理（恢复原始网络）
+3. 查看运行状态
+4. 查看最近日志
+5. 更新订阅配置
 
 ### 命令行管理
 
 ```bash
 # 服务管理
-clash-cli start     # 启动服务
-clash-cli stop      # 停止服务
-clash-cli restart   # 重启服务
+clash-cli start     # 启动服务并开启系统代理
+clash-cli stop      # 停止服务并恢复原始网络
 clash-cli status    # 查看状态
 
 # 订阅管理
@@ -202,14 +207,13 @@ clash-cli logs      # 查看日志
 ### 代理环境变量
 
 ```bash
-# 加载代理环境变量
-source /etc/clash/proxy-env.sh  # root 用户
-source ~/.config/clash/proxy-env.sh  # 普通用户
+# 交互式控制中心会自动处理代理配置，以下命令用于手动控制：
+source /etc/clash/proxy-env.sh        # root 用户加载代理环境变量
+source ~/.config/clash/proxy-env.sh   # 普通用户加载代理环境变量
 
-# 使用便捷命令
-clash_on    # 启用代理
-clash_off   # 禁用代理
-clash_test  # 测试连接
+clash_on      # 单独开启系统/用户级代理
+clash_off     # 单独关闭代理
+clash_test    # 测试代理连通性
 ```
 
 ## 🔧 高级功能
@@ -254,7 +258,6 @@ journalctl -u clash -f
 # 使用管理工具
 clash-cli start
 clash-cli stop
-clash-cli restart
 clash-cli status
 
 # 查看日志
@@ -272,7 +275,7 @@ nano ~/.config/clash/config.yaml  # 普通用户
 /usr/local/bin/clash -t -f /etc/clash/config.yaml
 
 # 重新加载配置
-clash-cli restart
+clash-cli stop && clash-cli start
 ```
 
 ### 日志管理
@@ -320,8 +323,8 @@ sudo pacman -S curl wget python
 #### 3. 网络问题
 ```bash
 # 测试网络连接
-ping google.com
-curl -I https://github.com
+ping 1.1.1.1
+curl -I https://www.cloudflare.com/cdn-cgi/trace
 
 # 使用代理下载
 export http_proxy=http://proxy:port
@@ -346,7 +349,7 @@ ss -tlnp | grep -E ":(7890|7891|9090)"
 #### 2. 代理连接失败
 ```bash
 # 测试代理连接
-curl -x http://127.0.0.1:7890 http://www.google.com
+clash-cli diagnose
 
 # 检查防火墙
 sudo ufw status

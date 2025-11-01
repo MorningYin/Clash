@@ -53,7 +53,7 @@ check_installation_status() {
     fi
     
     # 检查 systemd 服务
-    if is_root && command_exists systemctl; then
+    if is_root && systemd_available; then
         local service_name=$(get_config_value "install.service_name" "clash")
         if systemctl list-unit-files | grep -q "$service_name.service"; then
             echo -e "${GREEN}✓${NC} systemd 服务: $service_name.service"
