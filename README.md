@@ -48,7 +48,7 @@ cd clash-installer
 mkdir -p packages
 
 # 下载 Clash 安装包
-wget https://github.com/MetaCubeX/mihomo/releases/download/v1.19.15/mihomo-linux-amd64-compatible-v1.19.15.gz -O packages/mihomo-linux-amd64-v1.19.15.gz
+wget https://github.com/MetaCubeX/mihomo/releases/download/v1.19.15/mihomo-linux-amd64-compatible-v1.19.15.gz -O packages/mihomo-linux-amd64-compatible-v1.19.15.gz
 
 # 下载 Country.mmdb
 wget https://github.com/Dreamacro/maxmind-geoip/releases/latest/download/Country.mmdb -O packages/Country.mmdb
@@ -155,7 +155,7 @@ install:
 # 本地安装包配置
 packages:
   clash:
-    local_path: "packages/mihomo-linux-amd64-v1.19.15.gz"
+    local_path: "packages/mihomo-linux-amd64-compatible-v1.19.15.gz"
     download_url: "https://github.com/MetaCubeX/mihomo/releases/download/v1.19.15/mihomo-linux-amd64-compatible-v1.19.15.gz"
   country_mmdb:
     local_path: "packages/Country.mmdb"

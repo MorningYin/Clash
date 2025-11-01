@@ -34,6 +34,23 @@ systemd_unit_exists() {
     return 1
 }
 
+# 检查 systemd 服务是否可用
+systemd_unit_exists() {
+    if ! systemd_available; then
+        return 1
+    fi
+
+    if systemctl show "${SERVICE_NAME}.service" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    if [ -f "/etc/systemd/system/${SERVICE_NAME}.service" ] || [ -f "/lib/systemd/system/${SERVICE_NAME}.service" ]; then
+        return 0
+    fi
+
+    return 1
+}
+
 # 检查服务是否运行
 is_running() {
     if is_root && systemd_unit_exists && systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
@@ -536,7 +553,6 @@ clash_test() {
 }
 
 echo "Clash 代理环境变量已加载"
-echo "使用 clash_on 启用代理，clash_off 禁用代理，clash_test 测试连接"
 EOF
 
     chmod +x "$proxy_file"

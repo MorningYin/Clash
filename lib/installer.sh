@@ -17,7 +17,10 @@ install_clash_core() {
     
     # 检查本地文件
     if [ -n "$local_path" ]; then
-        local_path="$PROJECT_DIR/$local_path"
+        # 允许绝对路径，若为相对路径则基于项目目录
+        if [[ "$local_path" != /* ]]; then
+            local_path="$PROJECT_DIR/$local_path"
+        fi
         if [ -f "$local_path" ]; then
             log_info "使用本地 Clash 安装包: $local_path"
             install_from_local "$local_path" "$CLASH_BIN_DIR/clash"
