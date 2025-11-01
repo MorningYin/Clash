@@ -446,14 +446,22 @@ setup_proxy_env() {
         diag_entries+=("$entry")
     done < <(get_diagnostic_probes)
 
-    local probes_literal=""
+    # 生成数组初始化代码片段
+    # 构建数组元素列表，使用双引号包裹每个元素，转义特殊字符
+    local probes_array_elements=""
     if [ ${#diag_entries[@]} -gt 0 ]; then
         for entry in "${diag_entries[@]}"; do
-            if [ -n "$probes_literal" ]; then
-                probes_literal+=" "
+            # 转义双引号、反斜杠和美元符号，确保安全
+            local escaped_entry="${entry//\\/\\\\}"
+            escaped_entry="${escaped_entry//\"/\\\"}"
+            escaped_entry="${escaped_entry//\$/\\\$}"
+            if [ -n "$probes_array_elements" ]; then
+                probes_array_elements+=" "
             fi
-            probes_literal+=$(printf '%q' "$entry")
+            probes_array_elements+="\"$escaped_entry\""
         done
+    else
+        probes_array_elements="\"Cloudflare|https://www.cloudflare.com/cdn-cgi/trace\" \"Microsoft|https://www.microsoft.com\" \"Baidu|https://www.baidu.com\""
     fi
 
     cat > "$proxy_file" << EOF
@@ -494,9 +502,9 @@ clash_off() {
 clash_test() {
     local timeout=$diag_timeout
     local proxy_url="http://127.0.0.1:$http_port"
-    local probes=($probes_literal)
+    local probes=($probes_array_elements)
 
-    if [ ${#probes[@]} -eq 0 ]; then
+    if [ \${#probes[@]} -eq 0 ]; then
         probes=("Cloudflare|https://www.cloudflare.com/cdn-cgi/trace" "Microsoft|https://www.microsoft.com" "Baidu|https://www.baidu.com")
     fi
 
@@ -508,30 +516,30 @@ clash_test() {
     echo "测试代理连接..."
 
     local all_failed=true
-    for entry in "${probes[@]}"; do
-        [ -n "$entry" ] || continue
-        local name="${entry%%|*}"
-        local url="${entry#*|}"
-        if [ -z "$url" ] || [ "$url" = "$name" ]; then
-            url=$name
+    for entry in "\${probes[@]}"; do
+        [ -n "\$entry" ] || continue
+        local name="\${entry%%|*}"
+        local url="\${entry#*|}"
+        if [ -z "\$url" ] || [ "\$url" = "\$name" ]; then
+            url=\$name
         fi
 
-        printf '  %s : ' "$name"
+        printf '  %s : ' "\$name"
         local metrics
-        metrics=$(curl -x "$proxy_url" -sS -o /dev/null -w "%{http_code} %{time_total}" --connect-timeout "$timeout" --max-time "$timeout" "$url" 2>&1)
-        local exit_code=$?
-        local http_code="${metrics%% *}"
-        local elapsed="${metrics##* }"
+        metrics=\$(curl -x "\$proxy_url" -sS -o /dev/null -w "%{http_code} %{time_total}" --connect-timeout "\$timeout" --max-time "\$timeout" "\$url" 2>&1)
+        local exit_code=\$?
+        local http_code="\${metrics%% *}"
+        local elapsed="\${metrics##* }"
 
-        if [ $exit_code -eq 0 ] && [ -n "$http_code" ] && [ "$http_code" != "000" ]; then
+        if [ \$exit_code -eq 0 ] && [ -n "\$http_code" ] && [ "\$http_code" != "000" ]; then
             all_failed=false
-            echo "✓ HTTP $http_code (${elapsed}s)"
+            echo "✓ HTTP \$http_code (\${elapsed}s)"
         else
             local reason
-            if [ $exit_code -eq 0 ]; then
-                reason="HTTP 状态码异常: ${http_code:-000}"
+            if [ \$exit_code -eq 0 ]; then
+                reason="HTTP 状态码异常: \${http_code:-000}"
             else
-                case $exit_code in
+                case \$exit_code in
                     6) reason="DNS 解析失败" ;;
                     7) reason="无法建立连接" ;;
                     28) reason="HTTPS 连接超时" ;;
@@ -539,14 +547,14 @@ clash_test() {
                     47) reason="重定向次数过多" ;;
                     52|56) reason="服务器无响应" ;;
                     60) reason="证书校验失败" ;;
-                    *) reason="请求失败 (curl 错误码: $exit_code)" ;;
+                    *) reason="请求失败 (curl 错误码: \$exit_code)" ;;
                 esac
             fi
-            echo "✗ $reason"
+            echo "✗ \$reason"
         fi
     done
 
-    if [ "$all_failed" = true ]; then
+    if [ "\$all_failed" = true ]; then
         echo "所有诊断目标均无法连接"
         return 1
     fi
@@ -556,6 +564,13 @@ echo "Clash 代理环境变量已加载"
 EOF
 
     chmod +x "$proxy_file"
+    
+    # 验证生成的脚本语法
+    if ! bash -n "$proxy_file" 2>/dev/null; then
+        error "生成的代理脚本语法错误，请检查配置"
+        return 1
+    fi
+    
     success "代理环境变量脚本创建成功: $proxy_file"
 
     # 添加到用户的 shell 配置文件

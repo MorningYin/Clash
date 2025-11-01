@@ -160,6 +160,20 @@ cleanup_environment() {
     success "环境变量清理完成"
 }
 
+# 清理代理设置备份目录
+cleanup_proxy_backup() {
+    log_info "清理代理设置备份"
+    
+    local backup_dir="$CLASH_CONFIG_DIR/.proxy-backup"
+    
+    if [ -d "$backup_dir" ]; then
+        rm -rf "$backup_dir"
+        log_info "删除代理设置备份目录: $backup_dir"
+    fi
+    
+    success "代理设置备份清理完成"
+}
+
 # 清理定时任务
 cleanup_cron() {
     log_info "清理定时任务"
@@ -298,6 +312,7 @@ uninstall_clash() {
     if [ "$UNINSTALL_MODE" != "keep_config" ]; then
         backup_config
         uninstall_systemd_service
+        cleanup_proxy_backup
         remove_files
         cleanup_environment
         cleanup_cron
@@ -318,6 +333,7 @@ quick_uninstall() {
     
     stop_clash_service
     uninstall_systemd_service
+    cleanup_proxy_backup
     remove_files
     cleanup_environment
     cleanup_cron

@@ -9,6 +9,333 @@ source "$PROXY_LIB_DIR/common.sh"
 PROXY_MARK_BEGIN="# >>> clash-installer proxy BEGIN"
 PROXY_MARK_END="# <<< clash-installer proxy END"
 
+# ===== 备份和恢复功能 =====
+# 获取备份目录路径
+get_backup_dir() {
+    echo "$CLASH_CONFIG_DIR/.proxy-backup"
+}
+
+# 备份原始代理设置（系统级）
+backup_system_proxy_settings() {
+    local backup_dir="$(get_backup_dir)"
+    
+    if ! mkdir -p "$backup_dir/etc" 2>/dev/null; then
+        log_warn "无法创建备份目录，跳过备份"
+        return 1
+    fi
+    
+    log_info "备份原始系统代理设置..."
+    
+    # 备份 /etc/environment（如果存在且包含代理相关配置）
+    if [ -f /etc/environment ]; then
+        # 检查是否包含代理相关配置（但不是 Clash 的标记块）
+        if grep -qv "$PROXY_MARK_BEGIN" /etc/environment 2>/dev/null && \
+           (grep -qiE "(proxy|PROXY)" /etc/environment 2>/dev/null || \
+            grep -qiE "(http_proxy|https_proxy|HTTP_PROXY|HTTPS_PROXY|all_proxy|ALL_PROXY)" /etc/environment 2>/dev/null); then
+            mkdir -p "$backup_dir/etc"
+            cp /etc/environment "$backup_dir/etc/environment" 2>/dev/null && \
+                log_info "备份: /etc/environment" || \
+                log_warn "备份失败: /etc/environment"
+        fi
+    fi
+    
+    # 备份 Git 系统级配置
+    if [ -f /etc/gitconfig ]; then
+        if git config --system --get http.proxy >/dev/null 2>&1 || \
+           git config --system --get https.proxy >/dev/null 2>&1; then
+            mkdir -p "$backup_dir/etc"
+            cp /etc/gitconfig "$backup_dir/etc/gitconfig" 2>/dev/null && \
+                log_info "备份: /etc/gitconfig" || \
+                log_warn "备份失败: /etc/gitconfig"
+        fi
+    fi
+    
+    # 备份 APT 代理配置（如果存在且不是 Clash 创建的）
+    if [ -f /etc/apt/apt.conf.d/95clash-proxy ]; then
+        # 如果是 Clash 创建的，跳过备份
+        if ! grep -q "clash" /etc/apt/apt.conf.d/95clash-proxy 2>/dev/null; then
+            mkdir -p "$backup_dir/etc/apt/apt.conf.d"
+            cp /etc/apt/apt.conf.d/95clash-proxy "$backup_dir/etc/apt/apt.conf.d/95clash-proxy" 2>/dev/null && \
+                log_info "备份: /etc/apt/apt.conf.d/95clash-proxy" || \
+                log_warn "备份失败: /etc/apt/apt.conf.d/95clash-proxy"
+        fi
+    fi
+    
+    # 备份 YUM 配置（如果存在且包含代理配置）
+    if [ -f /etc/yum.conf ]; then
+        if grep -qiE "proxy\s*=" /etc/yum.conf 2>/dev/null && \
+           ! grep -q "$PROXY_MARK_BEGIN" /etc/yum.conf 2>/dev/null; then
+            mkdir -p "$backup_dir/etc"
+            cp /etc/yum.conf "$backup_dir/etc/yum.conf" 2>/dev/null && \
+                log_info "备份: /etc/yum.conf" || \
+                log_warn "备份失败: /etc/yum.conf"
+        fi
+    fi
+    
+    # 备份 DNF 配置（如果存在且包含代理配置）
+    if [ -f /etc/dnf/dnf.conf ]; then
+        if grep -qiE "proxy\s*=" /etc/dnf/dnf.conf 2>/dev/null && \
+           ! grep -q "$PROXY_MARK_BEGIN" /etc/dnf/dnf.conf 2>/dev/null; then
+            mkdir -p "$backup_dir/etc/dnf"
+            cp /etc/dnf/dnf.conf "$backup_dir/etc/dnf/dnf.conf" 2>/dev/null && \
+                log_info "备份: /etc/dnf/dnf.conf" || \
+                log_warn "备份失败: /etc/dnf/dnf.conf"
+        fi
+    fi
+    
+    # 备份 systemd 代理配置（如果存在且不是 Clash 创建的）
+    if [ -f /etc/systemd/system.conf.d/proxy.conf ]; then
+        # 如果是 Clash 创建的，跳过备份
+        if ! grep -q "clash" /etc/systemd/system.conf.d/proxy.conf 2>/dev/null; then
+            mkdir -p "$backup_dir/etc/systemd/system.conf.d"
+            cp /etc/systemd/system.conf.d/proxy.conf "$backup_dir/etc/systemd/system.conf.d/proxy.conf" 2>/dev/null && \
+                log_info "备份: /etc/systemd/system.conf.d/proxy.conf" || \
+                log_warn "备份失败: /etc/systemd/system.conf.d/proxy.conf"
+        fi
+    fi
+    
+    # 备份 Docker 代理配置（如果存在且不是 Clash 创建的）
+    if [ -f /etc/systemd/system/docker.service.d/proxy.conf ]; then
+        # 如果是 Clash 创建的，跳过备份
+        if ! grep -q "clash" /etc/systemd/system/docker.service.d/proxy.conf 2>/dev/null; then
+            mkdir -p "$backup_dir/etc/systemd/system/docker.service.d"
+            cp /etc/systemd/system/docker.service.d/proxy.conf "$backup_dir/etc/systemd/system/docker.service.d/proxy.conf" 2>/dev/null && \
+                log_info "备份: /etc/systemd/system/docker.service.d/proxy.conf" || \
+                log_warn "备份失败: /etc/systemd/system/docker.service.d/proxy.conf"
+        fi
+    fi
+    
+    # 记录备份时间戳
+    echo "$(date '+%Y-%m-%d %H:%M:%S')" > "$backup_dir/backup_timestamp.txt" 2>/dev/null || true
+    
+    return 0
+}
+
+# 恢复原始代理设置（系统级）
+restore_system_proxy_settings() {
+    local backup_dir="$(get_backup_dir)"
+    
+    if [ ! -d "$backup_dir" ]; then
+        # 没有备份，只删除 Clash 标记块（兼容现有行为）
+        return 0
+    fi
+    
+    log_info "恢复原始系统代理设置..."
+    
+    # 恢复 /etc/environment
+    if [ -f "$backup_dir/etc/environment" ]; then
+        # 先删除 Clash 标记块
+        [ -f /etc/environment ] && remove_proxy_block /etc/environment
+        # 恢复备份
+        cp "$backup_dir/etc/environment" /etc/environment 2>/dev/null && \
+            log_info "恢复: /etc/environment" || \
+            log_warn "恢复失败: /etc/environment"
+    else
+        # 没有备份，只删除 Clash 标记块
+        [ -f /etc/environment ] && remove_proxy_block /etc/environment
+    fi
+    
+    # 恢复 Git 系统级配置
+    if [ -f "$backup_dir/etc/gitconfig" ]; then
+        cp "$backup_dir/etc/gitconfig" /etc/gitconfig 2>/dev/null && \
+            log_info "恢复: /etc/gitconfig" || \
+            log_warn "恢复失败: /etc/gitconfig"
+    else
+        # 没有备份，清除 Git 系统级代理
+        if command_exists git; then
+            git config --system --unset http.proxy 2>/dev/null || true
+            git config --system --unset https.proxy 2>/dev/null || true
+        fi
+    fi
+    
+    # 恢复 APT 代理配置（如果备份存在且不是 Clash 创建的）
+    if [ -f "$backup_dir/etc/apt/apt.conf.d/95clash-proxy" ]; then
+        mkdir -p /etc/apt/apt.conf.d
+        cp "$backup_dir/etc/apt/apt.conf.d/95clash-proxy" /etc/apt/apt.conf.d/95clash-proxy 2>/dev/null && \
+            log_info "恢复: /etc/apt/apt.conf.d/95clash-proxy" || \
+            log_warn "恢复失败: /etc/apt/apt.conf.d/95clash-proxy"
+    else
+        # 删除 Clash 创建的 APT 代理配置
+        rm -f /etc/apt/apt.conf.d/95clash-proxy 2>/dev/null || true
+    fi
+    
+    # 恢复 YUM 配置
+    if [ -f "$backup_dir/etc/yum.conf" ]; then
+        # 先删除 Clash 标记块
+        [ -f /etc/yum.conf ] && remove_proxy_block /etc/yum.conf
+        # 恢复备份
+        cp "$backup_dir/etc/yum.conf" /etc/yum.conf 2>/dev/null && \
+            log_info "恢复: /etc/yum.conf" || \
+            log_warn "恢复失败: /etc/yum.conf"
+    else
+        # 没有备份，只删除 Clash 标记块
+        [ -f /etc/yum.conf ] && remove_proxy_block /etc/yum.conf
+    fi
+    
+    # 恢复 DNF 配置
+    if [ -f "$backup_dir/etc/dnf/dnf.conf" ]; then
+        # 先删除 Clash 标记块
+        [ -f /etc/dnf/dnf.conf ] && remove_proxy_block /etc/dnf/dnf.conf
+        # 恢复备份
+        mkdir -p /etc/dnf
+        cp "$backup_dir/etc/dnf/dnf.conf" /etc/dnf/dnf.conf 2>/dev/null && \
+            log_info "恢复: /etc/dnf/dnf.conf" || \
+            log_warn "恢复失败: /etc/dnf/dnf.conf"
+    else
+        # 没有备份，只删除 Clash 标记块
+        [ -f /etc/dnf/dnf.conf ] && remove_proxy_block /etc/dnf/dnf.conf
+    fi
+    
+    # 恢复 systemd 代理配置（如果备份存在且不是 Clash 创建的）
+    if [ -f "$backup_dir/etc/systemd/system.conf.d/proxy.conf" ]; then
+        mkdir -p /etc/systemd/system.conf.d
+        cp "$backup_dir/etc/systemd/system.conf.d/proxy.conf" /etc/systemd/system.conf.d/proxy.conf 2>/dev/null && \
+            log_info "恢复: /etc/systemd/system.conf.d/proxy.conf" || \
+            log_warn "恢复失败: /etc/systemd/system.conf.d/proxy.conf"
+        systemctl daemon-reload || true
+    else
+        # 删除 Clash 创建的 systemd 代理配置
+        rm -f /etc/systemd/system.conf.d/proxy.conf 2>/dev/null || true
+        systemctl daemon-reload || true
+    fi
+    
+    # 恢复 Docker 代理配置（如果备份存在且不是 Clash 创建的）
+    if [ -f "$backup_dir/etc/systemd/system/docker.service.d/proxy.conf" ]; then
+        mkdir -p /etc/systemd/system/docker.service.d
+        cp "$backup_dir/etc/systemd/system/docker.service.d/proxy.conf" /etc/systemd/system/docker.service.d/proxy.conf 2>/dev/null && \
+            log_info "恢复: /etc/systemd/system/docker.service.d/proxy.conf" || \
+            log_warn "恢复失败: /etc/systemd/system/docker.service.d/proxy.conf"
+        systemctl daemon-reload || true
+    else
+        # 删除 Clash 创建的 Docker 代理配置
+        rm -f /etc/systemd/system/docker.service.d/proxy.conf 2>/dev/null || true
+        systemctl daemon-reload || true
+    fi
+    
+    return 0
+}
+
+# 备份原始代理设置（用户级）
+backup_user_proxy_settings() {
+    local backup_dir="$(get_backup_dir)"
+    
+    if ! mkdir -p "$backup_dir" 2>/dev/null; then
+        log_warn "无法创建备份目录，跳过备份"
+        return 1
+    fi
+    
+    log_info "备份原始用户代理设置..."
+    
+    # 备份 shell 配置文件
+    for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
+        if [ -f "$rc" ]; then
+            # 检查是否包含代理相关配置（但不是 Clash 的标记块）
+            if grep -qv "$PROXY_MARK_BEGIN" "$rc" 2>/dev/null && \
+               (grep -qiE "(proxy|PROXY)" "$rc" 2>/dev/null || \
+                grep -qiE "(http_proxy|https_proxy|HTTP_PROXY|HTTPS_PROXY|all_proxy|ALL_PROXY)" "$rc" 2>/dev/null || \
+                grep -qiE "(\.\s+.*proxy|source.*proxy)" "$rc" 2>/dev/null); then
+                local basename_rc="$(basename "$rc")"
+                cp "$rc" "$backup_dir/$basename_rc" 2>/dev/null && \
+                    log_info "备份: $rc" || \
+                    log_warn "备份失败: $rc"
+            fi
+        fi
+    done
+    
+    # 备份 Git 用户级配置（如果包含代理设置）
+    if [ -f "$HOME/.gitconfig" ]; then
+        if git config --global --get http.proxy >/dev/null 2>&1 || \
+           git config --global --get https.proxy >/dev/null 2>&1; then
+            cp "$HOME/.gitconfig" "$backup_dir/.gitconfig" 2>/dev/null && \
+                log_info "备份: $HOME/.gitconfig" || \
+                log_warn "备份失败: $HOME/.gitconfig"
+        fi
+    fi
+    
+    # 备份 GNOME 桌面代理设置（如果可用）
+    if command_exists gsettings; then
+        local gsettings_backup="$backup_dir/gsettings.txt"
+        {
+            echo "# GNOME 桌面代理设置备份 - $(date '+%Y-%m-%d %H:%M:%S')"
+            gsettings get org.gnome.system.proxy mode 2>/dev/null || echo "none"
+            gsettings get org.gnome.system.proxy.http host 2>/dev/null || echo ""
+            gsettings get org.gnome.system.proxy.http port 2>/dev/null || echo "0"
+            gsettings get org.gnome.system.proxy.https host 2>/dev/null || echo ""
+            gsettings get org.gnome.system.proxy.https port 2>/dev/null || echo "0"
+            gsettings get org.gnome.system.proxy.socks host 2>/dev/null || echo ""
+            gsettings get org.gnome.system.proxy.socks port 2>/dev/null || echo "0"
+        } > "$gsettings_backup" 2>/dev/null && \
+            log_info "备份: GNOME 桌面代理设置" || \
+            log_warn "备份失败: GNOME 桌面代理设置"
+    fi
+    
+    # 记录备份时间戳
+    echo "$(date '+%Y-%m-%d %H:%M:%S')" > "$backup_dir/backup_timestamp.txt" 2>/dev/null || true
+    
+    return 0
+}
+
+# 恢复原始代理设置（用户级）
+restore_user_proxy_settings() {
+    local backup_dir="$(get_backup_dir)"
+    
+    if [ ! -d "$backup_dir" ]; then
+        # 没有备份，只删除 Clash 标记块（兼容现有行为）
+        return 0
+    fi
+    
+    log_info "恢复原始用户代理设置..."
+    
+    # 恢复 shell 配置文件
+    for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
+        local basename_rc="$(basename "$rc")"
+        if [ -f "$backup_dir/$basename_rc" ]; then
+            # 先删除 Clash 标记块
+            [ -f "$rc" ] && remove_proxy_block "$rc"
+            # 恢复备份
+            cp "$backup_dir/$basename_rc" "$rc" 2>/dev/null && \
+                log_info "恢复: $rc" || \
+                log_warn "恢复失败: $rc"
+        else
+            # 没有备份，只删除 Clash 标记块
+            [ -f "$rc" ] && remove_proxy_block "$rc"
+        fi
+    done
+    
+    # 恢复 Git 用户级配置
+    if [ -f "$backup_dir/.gitconfig" ]; then
+        cp "$backup_dir/.gitconfig" "$HOME/.gitconfig" 2>/dev/null && \
+            log_info "恢复: $HOME/.gitconfig" || \
+            log_warn "恢复失败: $HOME/.gitconfig"
+    else
+        # 没有备份，清除 Git 用户级代理
+        if command_exists git; then
+            git config --global --unset http.proxy 2>/dev/null || true
+            git config --global --unset https.proxy 2>/dev/null || true
+        fi
+    fi
+    
+    # 恢复 GNOME 桌面代理设置（如果备份存在）
+    if command_exists gsettings && [ -f "$backup_dir/gsettings.txt" ]; then
+        # 读取备份的 gsettings 值（跳过注释行和时间戳行）
+        local proxy_mode=$(grep -v "^#" "$backup_dir/gsettings.txt" | head -n 1 | tr -d "'\"")
+        if [ "$proxy_mode" != "none" ] && [ -n "$proxy_mode" ]; then
+            # 这里简化处理：如果有备份且有非 none 的设置，提示用户手动恢复
+            # 因为 gsettings 设置比较复杂，需要多个命令
+            log_info "检测到 GNOME 桌面代理设置备份，请手动检查恢复"
+        else
+            gsettings set org.gnome.system.proxy mode 'none' 2>/dev/null || true
+        fi
+    else
+        # 没有备份，清除 GNOME 桌面代理
+        if command_exists gsettings; then
+            gsettings set org.gnome.system.proxy mode 'none' 2>/dev/null || true
+        fi
+    fi
+    
+    return 0
+}
+
 # ===== 工具函数 =====
 # 获取 HTTP 代理端口
 # 返回值: 端口号（默认 7890）
@@ -69,6 +396,10 @@ remove_proxy_block() {
 # 影响范围: 当前用户的所有 shell 会话、git、GNOME 桌面环境
 user_proxy_on() {
     proxy_values_init
+    
+    # 备份原始代理设置
+    backup_user_proxy_settings || log_warn "备份失败，继续启用代理..."
+    
     local cfg_dir="$CLASH_CONFIG_DIR"
     local user_env_file="$cfg_dir/proxy-env.sh"
     
@@ -92,9 +423,11 @@ EOF
     chmod +x "$user_env_file"
     
     # 配置 shell 启动脚本
-    for rc in "$HOME/.bashrc" "$HOME/.profile"; do
-        [ -f "$rc" ] || touch "$rc"
-        append_proxy_block "$rc" ". $user_env_file"
+    for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
+        if [ -f "$rc" ] || [ "$rc" = "$HOME/.bashrc" ] || [ "$rc" = "$HOME/.profile" ]; then
+            [ -f "$rc" ] || touch "$rc"
+            append_proxy_block "$rc" ". $user_env_file"
+        fi
     done
     
     # 配置 Git 全局代理
@@ -120,21 +453,8 @@ EOF
 # 禁用用户级代理
 # 清理: shell 配置、git 全局配置、GNOME 桌面代理
 user_proxy_off() {
-    # 移除 shell 配置
-    for rc in "$HOME/.bashrc" "$HOME/.profile"; do
-        [ -f "$rc" ] && remove_proxy_block "$rc"
-    done
-    
-    # 清理 Git 全局代理
-    if command_exists git; then
-        git config --global --unset http.proxy 2>/dev/null || true
-        git config --global --unset https.proxy 2>/dev/null || true
-    fi
-    
-    # 清理 GNOME 桌面代理
-    if command_exists gsettings; then
-        gsettings set org.gnome.system.proxy mode 'none' || true
-    fi
+    # 先移除 Clash 标记块，然后恢复原始代理设置
+    restore_user_proxy_settings || log_warn "恢复失败，继续清理..."
     
     success "用户级系统代理已关闭"
 }
@@ -150,6 +470,9 @@ system_proxy_on() {
         error "需要 root 权限才能开启系统级代理"
         return 1
     fi
+    
+    # 备份原始代理设置
+    backup_system_proxy_settings || log_warn "备份失败，继续启用代理..."
     
     # 配置 /etc/environment（系统环境变量）
     local env_file="/etc/environment"
@@ -211,29 +534,10 @@ system_proxy_off() {
 		error "需要 root 权限才能关闭系统级代理"
 		return 1
 	fi
-	# /etc/environment
-	[ -f /etc/environment ] && remove_proxy_block /etc/environment
-	# apt
-	rm -f /etc/apt/apt.conf.d/95clash-proxy 2>/dev/null || true
-	# yum/dnf
-	[ -f /etc/yum.conf ] && remove_proxy_block /etc/yum.conf
-	[ -f /etc/dnf/dnf.conf ] && remove_proxy_block /etc/dnf/dnf.conf
-	# systemd 全局
-        if systemd_available; then
-                rm -f /etc/systemd/system.conf.d/proxy.conf 2>/dev/null || true
-                systemctl daemon-reload || true
-        fi
-        # docker
-        if systemd_available; then
-                rm -f /etc/systemd/system/docker.service.d/proxy.conf 2>/dev/null || true
-                systemctl daemon-reload || true
-                # 不强制重启 docker，避免打断业务
-        fi
-	# git system/global
-	if command_exists git; then
-		git config --system --unset http.proxy 2>/dev/null || true
-		git config --system --unset https.proxy 2>/dev/null || true
-	fi
+	
+	# 恢复原始代理设置
+	restore_system_proxy_settings || log_warn "恢复失败，继续清理..."
+	
 	success "系统级系统代理已关闭"
 }
 

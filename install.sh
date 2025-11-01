@@ -235,7 +235,24 @@ install_cli_tools() {
     # 若项目中已有增强版 CLI，则直接安装；否则生成基础版
     if [ -f "$SCRIPT_DIR/bin/clash-cli" ]; then
         cp "$SCRIPT_DIR/bin/clash-cli" "$cli_tool"
-        sed -i "1i LIB_DIR=\"$share_lib_dir\"" "$cli_tool" 2>/dev/null || true
+        # 在脚本开头注入 LIB_DIR 变量（在 shebang 之后）
+        # 使用临时文件方式，确保可靠性
+        local temp_file="${cli_tool}.tmp"
+        {
+            # 保留 shebang（第一行）
+            head -n 1 "$cli_tool"
+            # 添加 LIB_DIR 变量（安装脚本注入）
+            echo "LIB_DIR=\"$share_lib_dir\""
+            # 添加其余内容（从第二行开始）
+            tail -n +2 "$cli_tool"
+        } > "$temp_file"
+        
+        if [ -f "$temp_file" ]; then
+            mv "$temp_file" "$cli_tool"
+            chmod +x "$cli_tool"
+        else
+            log_warn "无法注入 LIB_DIR，使用默认路径推导"
+        fi
     else
         # 创建基础版 CLI 工具（无系统代理菜单）
         cat > "$cli_tool" << 'EOF'
