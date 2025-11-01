@@ -172,7 +172,17 @@ system:
   supported_archs: ["x86_64", "amd64", "aarch64", "arm64"]
   min_memory: 128
   min_disk_space: 100
+
+# 网络诊断
+diagnostics:
+  timeout: 8
+  https_probes:
+    - "Cloudflare|https://www.cloudflare.com/cdn-cgi/trace"
+    - "Microsoft|https://www.microsoft.com"
+    - "Baidu|https://www.baidu.com"
 ```
+
+> `diagnostics.https_probes` 支持自定义探测目标，格式为 `名称|URL`。脚本会自动忽略无法访问的站点，并在至少一个目标可达时判定代理正常。
 
 ## 🛠️ 高级功能
 
@@ -189,6 +199,20 @@ crontab -l | grep clash
 ```
 
 > 在没有 `crontab` 的环境中，程序会提示并跳过定时任务，但仍可通过上述脚本进行手动更新。
+
+### 网络诊断
+
+使用内置的诊断程序可以快速确认代理链路是否可用：
+
+```bash
+# 运行交互式控制台中的诊断
+clash-cli diagnose
+
+# 或仅使用命令模式
+clash-cli diagnose
+```
+
+诊断会对 `config.yaml` 中配置的多个 HTTPS 目标发起请求，并标出各自的成功或失败原因。您可以在自定义的目标中加入常用站点（如 GitHub、企业内网等），以适应不同网络环境。
 
 ### 服务管理
 
@@ -276,9 +300,12 @@ clash-cli logs
 
 3. **代理连接失败**
    ```bash
-   # 测试连接
-   curl -x http://127.0.0.1:7890 http://www.google.com
-   
+   # 使用内置诊断程序
+   clash-cli diagnose
+
+   # 或手动测试其中一个诊断目标
+   curl -x http://127.0.0.1:7890 https://www.cloudflare.com/cdn-cgi/trace
+
    # 检查端口
    ss -tlnp | grep -E ":(7890|7891|9090)"
    ```
@@ -289,7 +316,7 @@ clash-cli logs
    curl -s "https://your-subscription-url"
    
    # 检查网络连接
-   ping google.com
+   ping 1.1.1.1
    ```
 
 ### 日志位置

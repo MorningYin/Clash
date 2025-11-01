@@ -164,31 +164,26 @@ system_proxy_on() {
 Acquire::http::Proxy "${HTTP_PROXY_VAL}/";
 Acquire::https::Proxy "${HTTP_PROXY_VAL}/";
 EOF
-    
-    # 配置 YUM 包管理器
-    if [ -f /etc/yum.conf ]; then
-        append_proxy_block "/etc/yum.conf" "proxy=${HTTP_PROXY_VAL}"
-    fi
-    
-    # 配置 DNF 包管理器
-    if [ -f /etc/dnf/dnf.conf ]; then
-        append_proxy_block "/etc/dnf/dnf.conf" "proxy=${HTTP_PROXY_VAL}"
-    fi
-    
-    # 配置 systemd 全局环境变量
-    if systemd_available; then
-        mkdir -p /etc/systemd/system.conf.d
-        cat > /etc/systemd/system.conf.d/proxy.conf <<EOF
+	# yum/dnf
+	if [ -f /etc/yum.conf ]; then
+		append_proxy_block "/etc/yum.conf" "proxy=${HTTP_PROXY_VAL}"
+	fi
+	if [ -f /etc/dnf/dnf.conf ]; then
+		append_proxy_block "/etc/dnf/dnf.conf" "proxy=${HTTP_PROXY_VAL}"
+	fi
+	# systemd 全局环境
+        if systemd_available; then
+                mkdir -p /etc/systemd/system.conf.d
+                cat > /etc/systemd/system.conf.d/proxy.conf <<EOF
 [Manager]
 DefaultEnvironment=HTTP_PROXY=${HTTP_PROXY_VAL} HTTPS_PROXY=${HTTP_PROXY_VAL} ALL_PROXY=${SOCKS_PROXY_VAL} NO_PROXY=${NO_PROXY_VAL}
 EOF
-        systemctl daemon-reload || true
-    fi
-    
-    # 配置 Docker 守护进程代理
-    if systemd_available && [ -d /etc/systemd/system ]; then
-        mkdir -p /etc/systemd/system/docker.service.d
-        cat > /etc/systemd/system/docker.service.d/proxy.conf <<EOF
+                systemctl daemon-reload || true
+        fi
+        # Docker 守护进程
+        if systemd_available && [ -d /etc/systemd/system ]; then
+                mkdir -p /etc/systemd/system/docker.service.d
+                cat > /etc/systemd/system/docker.service.d/proxy.conf <<EOF
 [Service]
 Environment=HTTP_PROXY=${HTTP_PROXY_VAL}
 Environment=HTTPS_PROXY=${HTTP_PROXY_VAL}
@@ -212,81 +207,34 @@ EOF
 # 清理: /etc/environment, APT/YUM/DNF, systemd, Docker, Git 系统级配置
 # 需要 root 权限
 system_proxy_off() {
-    if ! is_root; then
-        error "需要 root 权限才能关闭系统级代理"
-        return 1
-    fi
-    
-    log_info "开始清理系统级代理配置..."
-    
-    # 清理 /etc/environment（系统环境变量）
-    if [ -f /etc/environment ]; then
-        remove_proxy_block /etc/environment
-        log_info "已清理 /etc/environment 中的代理配置"
-    fi
-    
-    # 清理 APT 包管理器配置
-    if [ -f /etc/apt/apt.conf.d/95clash-proxy ]; then
-        rm -f /etc/apt/apt.conf.d/95clash-proxy 2>/dev/null || true
-        log_info "已清理 APT 代理配置"
-    fi
-    
-    # 清理 YUM 包管理器配置
-    if [ -f /etc/yum.conf ]; then
-        remove_proxy_block /etc/yum.conf
-        log_info "已清理 YUM 代理配置"
-    fi
-    
-    # 清理 DNF 包管理器配置
-    if [ -f /etc/dnf/dnf.conf ]; then
-        remove_proxy_block /etc/dnf/dnf.conf
-        log_info "已清理 DNF 代理配置"
-    fi
-    
-    # 清理 systemd 全局环境变量
-    if systemd_available; then
-        if [ -f /etc/systemd/system.conf.d/proxy.conf ]; then
-            rm -f /etc/systemd/system.conf.d/proxy.conf 2>/dev/null || true
-            log_info "已清理 systemd 全局环境变量"
+	if ! is_root; then
+		error "需要 root 权限才能关闭系统级代理"
+		return 1
+	fi
+	# /etc/environment
+	[ -f /etc/environment ] && remove_proxy_block /etc/environment
+	# apt
+	rm -f /etc/apt/apt.conf.d/95clash-proxy 2>/dev/null || true
+	# yum/dnf
+	[ -f /etc/yum.conf ] && remove_proxy_block /etc/yum.conf
+	[ -f /etc/dnf/dnf.conf ] && remove_proxy_block /etc/dnf/dnf.conf
+	# systemd 全局
+        if systemd_available; then
+                rm -f /etc/systemd/system.conf.d/proxy.conf 2>/dev/null || true
+                systemctl daemon-reload || true
         fi
-        systemctl daemon-reload || true
-    fi
-    
-    # 清理 Docker 服务代理配置
-    if systemd_available && [ -d /etc/systemd/system/docker.service.d ]; then
-        if [ -f /etc/systemd/system/docker.service.d/proxy.conf ]; then
-            rm -f /etc/systemd/system/docker.service.d/proxy.conf 2>/dev/null || true
-            log_info "已清理 Docker 服务代理配置"
-            systemctl daemon-reload || true
-            # 不强制重启 docker，避免打断业务
+        # docker
+        if systemd_available; then
+                rm -f /etc/systemd/system/docker.service.d/proxy.conf 2>/dev/null || true
+                systemctl daemon-reload || true
+                # 不强制重启 docker，避免打断业务
         fi
-    fi
-    
-    # 清理 Git 系统级代理配置
-    if command_exists git; then
-        git config --system --unset http.proxy 2>/dev/null || true
-        git config --system --unset https.proxy 2>/dev/null || true
-        log_info "已清理 Git 系统级代理配置"
-    fi
-    
-    # 清理可能的其他代理配置文件
-    # 使用数组存储需要清理的文件，避免管道创建子shell的问题
-    local files_to_clean=()
-    if [ -d /etc/apt/apt.conf.d ]; then
-        while IFS= read -r -d '' file; do
-            if grep -q "clash-installer\|127.0.0.1:789" "$file" 2>/dev/null; then
-                files_to_clean+=("$file")
-            fi
-        done < <(find /etc/apt/apt.conf.d/ -name "*proxy*" -type f -print0 2>/dev/null)
-    fi
-    
-    # 清理找到的额外 APT 代理配置文件
-    for file in "${files_to_clean[@]}"; do
-        rm -f "$file" 2>/dev/null || true
-        log_info "已清理额外的 APT 代理配置: $file"
-    done
-    
-    success "系统级代理配置已完全清理，系统网络路径已恢复"
+	# git system/global
+	if command_exists git; then
+		git config --system --unset http.proxy 2>/dev/null || true
+		git config --system --unset https.proxy 2>/dev/null || true
+	fi
+	success "系统级系统代理已关闭"
 }
 
 # ===== 公共 API =====

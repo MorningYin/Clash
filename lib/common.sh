@@ -430,6 +430,77 @@ systemd_available() {
     return 1
 }
 
+# ===== 网络诊断辅助 =====
+describe_curl_error() {
+    local code="$1"
+    case "$code" in
+        0)
+            echo "请求成功"
+            ;;
+        6)
+            echo "DNS 解析失败"
+            ;;
+        7)
+            echo "无法建立连接"
+            ;;
+        28)
+            echo "HTTPS 连接超时"
+            ;;
+        35)
+            echo "TLS 握手失败"
+            ;;
+        47)
+            echo "重定向次数过多"
+            ;;
+        52|56)
+            echo "服务器无响应"
+            ;;
+        60)
+            echo "证书校验失败"
+            ;;
+        *)
+            echo "请求失败 (curl 错误码: $code)"
+            ;;
+    esac
+}
+
+get_diagnostic_timeout() {
+    local timeout="$(get_config_value "diagnostics.timeout" "8")"
+    if [[ "$timeout" =~ ^[0-9]+$ ]] && [ "$timeout" -gt 0 ]; then
+        echo "$timeout"
+    else
+        echo "8"
+    fi
+}
+
+get_diagnostic_probes() {
+    local raw="$(get_config_value "diagnostics.https_probes" "")"
+    local -a probes=()
+
+    if [ -n "$raw" ]; then
+        local tokens=()
+        read -r -a tokens <<< "$raw"
+        for token in "${tokens[@]}"; do
+            [ -n "$token" ] || continue
+            if [[ "$token" == *"|"* ]]; then
+                probes+=("$token")
+            else
+                probes+=("$token|$token")
+            fi
+        done
+    fi
+
+    if [ ${#probes[@]} -eq 0 ]; then
+        probes=(
+            "Cloudflare|https://www.cloudflare.com/cdn-cgi/trace"
+            "Microsoft|https://www.microsoft.com"
+            "Baidu|https://www.baidu.com"
+        )
+    fi
+
+    printf '%s\n' "${probes[@]}"
+}
+
 # 检查依赖
 check_dependencies() {
     local missing_commands=()

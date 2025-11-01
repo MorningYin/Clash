@@ -158,7 +158,17 @@ security:
   verify_checksums: false
   force_https: true
   download_timeout: 300
+
+# 网络诊断
+diagnostics:
+  timeout: 8
+  https_probes:
+    - "Cloudflare|https://www.cloudflare.com/cdn-cgi/trace"
+    - "Microsoft|https://www.microsoft.com"
+    - "Baidu|https://www.baidu.com"
 ```
+
+> `diagnostics` 配置用于 `clash-cli diagnose` 命令，可根据实际情况添加或替换目标站点。
 
 ## 🎛️ 管理工具使用
 
@@ -313,8 +323,8 @@ sudo pacman -S curl wget python
 #### 3. 网络问题
 ```bash
 # 测试网络连接
-ping google.com
-curl -I https://github.com
+ping 1.1.1.1
+curl -I https://www.cloudflare.com/cdn-cgi/trace
 
 # 使用代理下载
 export http_proxy=http://proxy:port
@@ -339,7 +349,7 @@ ss -tlnp | grep -E ":(7890|7891|9090)"
 #### 2. 代理连接失败
 ```bash
 # 测试代理连接
-curl -x http://127.0.0.1:7890 http://www.google.com
+clash-cli diagnose
 
 # 检查防火墙
 sudo ufw status

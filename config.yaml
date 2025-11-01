@@ -59,6 +59,16 @@ system:
   # 最小磁盘空间要求（MB）
   min_disk_space: 100
 
+# 网络诊断
+diagnostics:
+  # 每个探测的超时时间（秒）
+  timeout: 8
+  # 使用代理进行连通性探测的目标列表（格式: 名称|URL）
+  https_probes:
+    - "Cloudflare|https://www.cloudflare.com/cdn-cgi/trace"
+    - "Microsoft|https://www.microsoft.com"
+    - "Baidu|https://www.baidu.com"
+
 # 依赖检查
 dependencies:
   required:
